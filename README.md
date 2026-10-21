@@ -1,4 +1,4 @@
-## Hi there 👋
+## 문과 3전공 창의력 대장의 바이브코딩 프로젝트 모음
 
 <!--
 **seongashley/seongashley** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
