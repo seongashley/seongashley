@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>고양이 출근했다냥</title>
+  <!-- 도트 글씨체 (다른 페이지와 같은 Galmuri) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+  <style>
+    /* ===== 색깔 모음 : 연두 / 연보라 / 갈색 (index-v3.html 과 같아요) ===== */
+    :root {
+      --green:   #b5e061;
+      --green-l: #e4f6bd;
+      --green-d: #5a8a1e;
+      --grass-a: #b5e061;   /* 잔디 체크무늬 밝은 칸 (= 연두) */
+      --grass-b: #a3d24f;   /* 잔디 체크무늬 어두운 칸 */
+      --lav:     #cdb8f0;
+      --lav-l:   #f1e9ff;
+      --lav-d:   #6b4fa0;
+      --brown:   #9a6634;
+      --brown-l: #d9b48a;
+      --brown-d: #3f2412;
+      --cream:   #fffaf0;
+      --pink:    #f2a7b8;   /* 작은 포인트에만 */
+      --frame:   430px;     /* 휴대폰 세로 폭 : 이보다 넓으면 가운데에 두기 (index-v3 와 같아요) */
+      --touch:   44px;      /* 손가락으로 누르는 곳의 최소 크기 */
+      --px:      5px;      /* 쥐 그림 한 칸 크기 */
+      --cat-px:  7px;      /* 고양이 그림 한 칸 크기 (아기 고양이라 조금 작게) */
+      --px-fam:  4px;      /* 가족쥐 그림 한 칸 크기 (셋이라 조금 작게) */
+      --cer-px:  9px;      /* 세리머니 고양이 한 칸 크기 (크게 보여 주기) */
+    }
+
+    * { box-sizing: border-box; }
+
+    /* 배경 : 연보라 바탕에 도트 무늬 (index-v3 와 같아요) */
+    body {
+      margin: 0;
+      padding: 10px 12px 24px;
+      min-height: 100vh;
+      font-family: "Galmuri11", "DungGeunMo", monospace;
+      color: var(--brown-d);
+      background: var(--lav-l) radial-gradient(var(--lav) 2px, transparent 2px) 0 0 / 16px 16px;
+    }
+
+    /* ===== 전체 배치 : 휴대폰 세로 한 줄 (상단바 → 오늘의 사냥 → 잔디밭) ===== */
+    .game {
+      max-width: var(--frame);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ===== 공통 상자 모양 (index-v3 의 .box) ===== */
+    .box {
+      background: var(--cream);
+      border: 4px solid var(--brown-d);
+      box-shadow: 6px 6px 0 var(--brown-d);   /* 흐림 없는 그림자 = 도트 느낌 */
+    }
+    .box h2 {
+      margin: 0;
+      padding: 6px 10px;
+      font-size: 14px;
+      font-weight: normal;
+      background: var(--lav);
+      border-bottom: 4px solid var(--brown-d);
+    }
+    .box .body { padding: 10px; }
+
+    /* ===== 상단바 : 뒤로가기 · 제목 (연두) ===== */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      background: var(--green);
+    }
+    .back {
+      display: grid;
+      place-items: center;
+      min-width: var(--touch);
+      min-height: var(--touch);
+      padding: 0 8px;
+      font-size: 13px;
+      color: var(--brown-d);
+      text-decoration: none;
+      background: var(--cream);
+      border: 3px solid var(--brown-d);
+      box-shadow: 3px 3px 0 var(--brown-d);
+    }
+    .back:hover  { background: var(--green-l); }
+    .back:active { transform: translate(3px, 3px); box-shadow: none; }
+    .back:focus-visible { outline: 3px dashed var(--lav-d); outline-offset: 3px; }
+    .title {
+      flex: 1;
+      margin: 0;
+      font-size: clamp(18px, 5.5vw, 22px);
+      text-align: center;
+      text-shadow: 2px 2px 0 var(--green-l);
+    }
+
+    /* ===== 오늘의 사냥 : 점수 · 남은 시간 게이지 · 시작 버튼 ===== */
+    .hud .body {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 8px 12px;
+    }
+    .hud .label { font-size: 12px; color: var(--lav-d); }
+    .hud .value { font-size: 22px; }
+    .score-box { display: flex; flex-direction: column; align-items: center; min-width: 64px; }
+    .time-box  { display: grid; gap: 4px; }
+    .time-box .row { display: flex; justify-content: space-between; align-items: baseline; }
+
+    /* 남은 시간 게이지 (index-v3 의 줄무늬 게이지) : 시간이 줄면 칸이 줄어요 */
+    .gauge {
+      height: 16px;
+      border: 3px solid var(--brown-d);
+      background: white;
+    }
+    .gauge > div {
+      --fill: var(--green-d);
+      height: 100%;
+      background: repeating-linear-gradient(90deg, var(--fill) 0 8px, transparent 8px 10px);
+      transition: width 0.5s steps(5);   /* 뚝뚝 끊기며 줄어요 */
+    }
+    .time-box.hurry .gauge > div { --fill: #c0304b; }      /* 5초 남으면 빨갛게 */
+    .time-box.hurry .value { color: #c0304b; animation: flash 0.5s steps(1) infinite; }
+    @keyframes flash { 50% { opacity: 0.3; } }
+
+    /* 버튼 (index-v3 의 .btn) : 연두 + 갈색 테두리 + 딱딱한 그림자 */
+    .btn {
+      font: inherit;
+      font-size: 16px;
+      width: 100%;
+      min-height: var(--touch);
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--brown-d);
+      background: var(--green);
+      border: 3px solid var(--brown-d);
+      box-shadow: 3px 3px 0 var(--brown-d);
+    }
+    .btn:hover  { background: var(--green-l); }
+    .btn:active { transform: translate(3px, 3px); box-shadow: none; }
+    .btn:focus-visible { outline: 3px dashed var(--lav-d); outline-offset: 3px; }
+    .btn:disabled { cursor: default; opacity: 0.5; transform: none; box-shadow: 3px 3px 0 var(--brown-d); }
+    .hud .btn { grid-column: 1 / -1; }
+
+    /* ===== 잔디밭 : 체크무늬 + 3×3 구멍 ===== */
+    .field {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      user-select: none;            /* 빠르게 연타해도 글자가 파랗게 선택되지 않게 */
+      -webkit-user-select: none;
+      padding: 18px;
+      padding-bottom: calc(var(--cat-px) * 10 + 20px);   /* 맨 아래에 고양이 자리 */
+      background:
+        repeating-conic-gradient(var(--grass-a) 0 25%, var(--grass-b) 0 50%) 0 0 / 32px 32px;
+    }
+
+    /* 구멍 하나 : 흙 테두리 + 까만 구멍 (여기서 쥐가 나와요) */
+    .hole {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .hole .dirt {
+      width: 100%;
+      height: 46%;
+      background: var(--brown);
+      border: 4px solid var(--brown-d);
+      border-radius: 50%;
+      box-shadow: 0 6px 0 var(--green-d);   /* 아래쪽 잔디 그림자 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hole .pit {
+      width: 74%;
+      height: 62%;
+      background: var(--brown-d);
+      border-radius: 50%;
+    }
+
+    /* ===== 쥐 =====
+       mole-box 는 구멍 입구에서 아래가 잘리는 상자예요.
+       쥐가 상자 아래(안 보이는 곳)에 숨어 있다가 위로 올라오면
+       구멍 속에서 쏙 나오는 것처럼 보여요. */
+    .mole-box {
+      position: absolute;
+      left: 10%;
+      right: 10%;
+      bottom: 23%;          /* 까만 구멍의 한가운데 높이 */
+      height: 75%;
+      overflow: hidden;     /* 이 선 아래는 안 보여요 = 구멍 속 */
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .mole {
+      display: grid;                            /* 도트 쥐 그림 (스크립트가 칸을 채워요) */
+      transform: translateY(105%);              /* 처음엔 구멍 속에 숨어 있어요 */
+      transition: transform 0.15s ease-in;      /* 들어갈 때 : 빠르게 쏙 */
+    }
+    .hole.up .mole {
+      transform: translateY(0);
+      transition: transform 0.25s cubic-bezier(0.3, 1.6, 0.5, 1);  /* 나올 때 : 살짝 튕기듯 뿅 */
+      pointer-events: auto;   /* 나와 있을 때만 누를 수 있어요 */
+      cursor: pointer;
+    }
+    .hole.up:not(.caught) { cursor: pointer; }   /* 쥐가 나온 구멍은 칸 전체를 눌러도 돼요 */
+
+    /* 찜한 쥐 : 고양이가 날아오는 동안 그대로 얼어붙어 있어요 (다시 눌러도 소용없게) */
+    .hole.caught .mole { pointer-events: none; cursor: default; }
+
+    /* 잡힌 쥐 : 미끄러지지 않고 그 자리에서 바로 사라져요 */
+    .hole.hit .mole {
+      visibility: hidden;
+      transition: none;
+    }
+
+    /* 💥 이펙트 : 평소엔 숨어 있다가 잡히면 펑! 커지면서 사라져요 */
+    .boom {
+      position: absolute;
+      left: 50%;
+      bottom: 30%;
+      font-size: clamp(40px, 12vw, 72px);
+      line-height: 1;
+      opacity: 0;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .hole.hit .boom { animation: boom 0.35s ease-out forwards; }
+
+    /* 가족쥐를 잡으면 "+3" 이 위로 둥실 떠올라요 */
+    .plus {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      font-size: clamp(18px, 5vw, 26px);
+      color: #ffd23f;
+      text-shadow: 2px 2px 0 var(--brown-d), -2px 2px 0 var(--brown-d), 2px -2px 0 var(--brown-d), -2px -2px 0 var(--brown-d);
+      opacity: 0;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .hole.hit.family .plus { animation: plus-up 0.35s ease-out forwards; }   /* 💥 와 같은 길이 */
+    @keyframes plus-up {
+      0%   { opacity: 1; transform: translate(-50%, 10px); }
+      100% { opacity: 0; transform: translate(-50%, -24px); }
+    }
+    @keyframes boom {
+      0%   { opacity: 1; transform: translateX(-50%) scale(0.4); }
+      50%  { opacity: 1; transform: translateX(-50%) scale(1.2); }
+      100% { opacity: 0; transform: translateX(-50%) scale(1.4); }
+    }
+
+    /* ===== 사냥꾼 고양이 (잔디밭 맨 아래, 뒷모습) =====
+       hunter       : 고양이 집 자리 (움직이지 않아요). 날아갈 거리를 여기서부터 재요
+       hunter-move  : 실제로 날아가는 몸 (스크립트가 animate 로 움직여요)
+       hunter-sprite: 도트 그림 */
+    .hunter {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      width: calc(var(--cat-px) * 16);
+      height: calc(var(--cat-px) * 10);   /* 평소(앉은) 키. 손 번쩍 자세는 위로 삐져나와요 */
+      margin-left: calc(var(--cat-px) * -8);   /* 가운데 맞추기 */
+      z-index: 1;                               /* 움직일 때 구멍 위로 */
+      pointer-events: none;                     /* 고양이 뒤에 있는 쥐도 눌리게 */
+    }
+    .hunter-move {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      transform-origin: 50% 100%;               /* 발바닥 기준으로 납작/길쭉 */
+    }
+    .hunter-sprite { display: grid; }
+
+    /* ===== 결과 화면 : 시간이 끝나면 잔디밭 위에 덮여요 ===== */
+    .field { position: relative; }
+    .result {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;                  /* 점수 카드는 언제나 한가운데 고정 */
+      justify-content: center;
+      background: rgba(107, 79, 160, 0.5);  /* 진한 연보라를 반투명하게 */
+    }
+
+    /* ===== 승리 세리머니 : 게임 끝나고 1.8초 뒤에 고양이 상체가 쑥 떠올라요 =====
+       자리는 처음부터 잡아 두고(visibility) 보이기만 해서, 점수 카드가 덜컥 밀리지 않아요 */
+    /* 카드와 세리머니 묶음 : 이 묶음의 기준은 카드 크기예요 */
+    .result-stack {
+      position: relative;
+      width: min(300px, 86%);
+    }
+    .result-stack .result-card { width: 100%; }
+    /* 세리머니는 카드 바로 위에 겹쳐 떠요 (absolute) : 나타나도 카드가 밀리지 않아요 */
+    .ceremony {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 10px);           /* 카드 윗변에서 10px 위 */
+      z-index: 1;                          /* 카드보다 앞에 */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .ceremony.show {
+      visibility: visible;
+      animation: rise-up 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+    }
+    @keyframes rise-up {
+      from { transform: translateY(40px); opacity: 0; }
+    }
+    .ceremony-sprite { display: grid; }
+    /* 멋쩍은 고양이 : 몸을 좌우로 어색하게 꼼지락 */
+    .ceremony[data-css="awkward"] .ceremony-sprite { animation: awkward 0.8s steps(1) infinite; }
+    @keyframes awkward {
+      0%   { transform: translateX(-4px) rotate(-2deg); }
+      50%  { transform: translateX(4px) rotate(2deg); }
+    }
+    .ceremony-line {
+      margin: 0;
+      text-align: center;               /* 길면 두 줄로 */
+      padding: 8px 12px;
+      font-size: 14px;
+      background: var(--cream);
+      border: 4px solid var(--brown-d);
+      box-shadow: 3px 3px 0 var(--brown-d);
+    }
+    .result[hidden] { display: none; }
+    /* 결과 카드 = index-v3 의 상자 모양 (연보라 머리띠 + 크림색 몸통) */
+    .result-card {
+      text-align: center;
+      animation: card-pop 0.3s cubic-bezier(0.3, 1.6, 0.5, 1);
+    }
+    @keyframes card-pop {
+      from { transform: scale(0.6); opacity: 0; }
+    }
+    .result-card h2 { font-size: 18px; text-align: center; }
+    .result-card .body { padding: 14px 14px 16px; }
+    .result-score { margin: 0 0 6px; font-size: 16px; }
+    .result-score b { font-size: 26px; color: var(--lav-d); }
+    .result-rate  { margin: 0 0 14px; font-size: 13px; color: var(--green-d); }
+
+    .help { margin: 4px 0 0; text-align: center; font-size: 12px; color: var(--lav-d); }
+
+    /* 폰처럼 좁은 화면 : 그림을 조금 작게 */
+    @media (max-width: 420px) {
+      :root { --px: 4px; --cat-px: 4px; --px-fam: 3px; --cer-px: 5px; }
+      .field { gap: 10px; padding: 12px; padding-bottom: calc(var(--cat-px) * 10 + 16px); }
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <!-- 상단바 : 뒤로가기 + 제목 -->
+    <header class="topbar box">
+      <a class="back" href="arcade.html" aria-label="오락실로 돌아가기">◀ 오락실</a>
+      <h1 class="title">고양이 출근했다냥</h1>
+    </header>
+
+    <!-- 오늘의 사냥 : 점수 / 남은 시간 / 시작 버튼 -->
+    <section class="box hud">
+      <h2>🐾 오늘의 사냥</h2>
+      <div class="body">
+        <div class="score-box">
+          <span class="label">점수</span>
+          <span class="value" id="score">0</span>
+        </div>
+        <div class="time-box" id="timeBox">
+          <div class="row">
+            <span class="label">남은 시간</span>
+            <span class="value"><span id="time">30</span>초</span>
+          </div>
+          <div class="gauge"><div id="timeFill" style="width: 100%"></div></div>
+        </div>
+        <button class="btn" id="startBtn" type="button">게임 시작</button>
+      </div>
+    </section>
+
+    <!-- 잔디밭 : 구멍 9개는 아래 스크립트가 만들어요 -->
+    <section class="box">
+      <h2>🌱 잔디밭</h2>
+      <div class="field" id="field">
+        <!-- 사냥꾼 고양이 (뒷모습) -->
+        <div class="hunter" id="hunter" aria-hidden="true">
+          <div class="hunter-move" id="hunterMove"><div class="hunter-sprite" id="hunterSprite"></div></div>
+        </div>
+        <!-- 결과 화면 (처음엔 숨겨 둬요) -->
+        <div class="result" id="result" hidden>
+          <div class="result-stack">
+            <div class="result-card box" role="dialog" aria-labelledby="resultTitle">
+              <h2 id="resultTitle">게임 오버!</h2>
+              <div class="body">
+                <p class="result-score">최종 점수 <b id="finalScore">0</b>점</p>
+                <p class="result-rate" id="finalRate"></p>
+                <button class="btn" id="retryBtn" type="button">다시 하기</button>
+              </div>
+            </div>
+            <!-- 승리 세리머니 (잡은 비율에 따라 고양이 모습이 달라져요) : 카드 바로 위에 떠요 -->
+            <div class="ceremony" id="ceremony" aria-live="polite">
+              <div class="ceremony-sprite" id="ceremonySprite"></div>
+              <p class="ceremony-line" id="ceremonyLine"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="help" id="help">쥐가 나오면 콕! 누르면 고양이가 덮쳐요</p>
+  </main>
+
+  <script>
+    // ===== 1. 기본 설정 =====
+    const GAME_TIME = 30;   // 한 판 시간 (초)
+
+    const field    = document.getElementById("field");
+    const scoreEl  = document.getElementById("score");
+    const timeEl   = document.getElementById("time");
+    const timeBox  = document.getElementById("timeBox");
+    const timeFill = document.getElementById("timeFill");   // 남은 시간 게이지 칸
+    const startBtn = document.getElementById("startBtn");
+    const resultEl = document.getElementById("result");
+    const finalEl  = document.getElementById("finalScore");
+    const retryBtn = document.getElementById("retryBtn");
+
+    let score = 0;
+    let timeLeft = GAME_TIME;
+    let timer = null;
+
+    // 게임(index-v3.html)에서 지어 준 고양이 이름 불러오기 (없으면 도토리)
+    let catName = "도토리";
+    try {
+      const save = JSON.parse(localStorage.getItem("butler-game-save-v3"));
+      if (save && typeof save.catName === "string" && save.catName.trim()) catName = save.catName.trim();
+    } catch (e) {}
+
+    // 이름 뒤에 붙는 말 고르기 : 받침이 있으면 앞 글자, 없으면 뒤 글자 ("이/가")
+    function josa(word, pair) {
+      const [withB, withoutB] = pair.split("/");
+      const code = word.charCodeAt(word.length - 1) - 0xac00;
+      const hasBatchim = code >= 0 && code <= 11171 && code % 28 !== 0;
+      return word + (hasBatchim ? withB : withoutB);
+    }
+    document.getElementById("help").textContent = `쥐가 나오면 콕! 누르면 ${josa(catName, "이/가")} 덮쳐요`;
+
+    // ===== 1-2. 도트 그림 (index-v3.html 과 같은 방식) =====
+    //   글자 하나 = 픽셀 하나, "." 은 투명. 한 그림 안의 줄은 길이가 같아야 해요.
+
+    // 도토리 색 (index-v3 의 catColors 와 같아요) + 입김(Q)
+    const catColors = {
+      K: "#4A2F27",                 // 윤곽선
+      B: "#e3a868", T: "#c8834a",   // 털 / 줄무늬
+      A: "#7a4a24", a: "#b07a3f",   // 정수리의 도토리 모자
+      Q: "#ffffff",                 // 앞발 속도선
+      // 아래는 세리머니(앞모습)용
+      L: "#fff3e0", P: "#f4a6b8",   // 크림색 가슴·앞발 / 분홍 볼·코·젤리
+      E: "#2b1a14", w: "#ffffff",   // 눈 / 눈 반짝
+      W: "#7fc4ec",                 // 땀방울
+      N: "#5b6fa8",                 // 시무룩 줄 (이마에 내려오는 파란 줄)
+      G: "#1e1a2e", g: "#8f9bff",   // 선글라스 / 선글라스 반사
+      Y: "#ffe066", R: "#e0566e",   // 폭죽 노랑 / 빨강
+    };
+    // 쥐 색 : index-v3 의 장난감 쥐(M) 와 같은 회보라
+    const mouseColors = {
+      K: "#4A2F27", M: "#b8aec9", m: "#e6e0ef",   // 윤곽선 / 털 / 배
+      P: "#f4a6b8", E: "#2b1a14", w: "#ffffff",   // 분홍 귀·코·볼 / 눈 / 눈 반짝
+    };
+
+    // 쥐 (12칸) : 동그란 분홍 귀 + 반짝 눈 + 분홍 코. 아래쪽은 구멍 속이라 잘려 보여요
+    const MOUSE = [
+      ".KKK....KKK.",
+      "KPPPK..KPPPK",
+      "KPPPKKKKPPPK",
+      ".KKMMMMMMKK.",
+      ".KMwMMMMwMK.",
+      ".KMEMMMMEMK.",
+      ".KPMMPPMMPK.",
+      ".KMMMKKMMMK.",
+      ".KMmmmmmmMK.",
+      ".KMmmmmmmMK.",
+    ];
+
+    // ----- 아기 고양이 도토리 (뒷모습) : index-v3 의 뒤돌아 앉은 모습을 작고 어리게 -----
+    //   머리는 그대로 크게, 몸은 작게 = 어린 고양이 비율
+
+    // 뒤통수 (12칸 x 7줄) : index-v3 의 CAT_BACK_HEAD 그대로 (귀 + 정수리 줄무늬)
+    const BACK_HEAD = [
+      ".K........K.",
+      "KBK......KBK",
+      "KBBKKKKKKBBK",
+      "KBBBTBBTBBBK",
+      "KBBBBTTBBBBK",
+      "KBBBBBBBBBBK",
+      "KBBBBBBBBBBK",
+    ];
+    // 앉은 몸 (10칸 x 3줄) : 머리보다 좁아요 + 크림색 뒷발이 빼꼼
+    const KIT_BODY = [
+      "KBBTBBTBBK",
+      "KBBBBBBBBK",
+      ".KLKKKKLK.",
+    ];
+    // 일어선 몸 (10칸 x 4줄) : 뒷발로 서서 손 내밀 때
+    const KIT_STAND = [
+      "KBBTBBTBBK",
+      "KBBBBBBBBK",
+      ".KBBBBBBK.",
+      "..KK..KK..",
+    ];
+    // 꼬리 : index-v3 의 TAIL_L / TAIL_R 그대로. 왼쪽 ↔ 오른쪽을 번갈아 보이면 살랑살랑
+    const TAIL_L = ["KK.", "KTK", "KBK", ".KTK"];
+    const TAIL_R = [".KK", "KTK", "KBK", "KTK."];
+    // 작은 앞발 : 번쩍 든 손 (6줄) / 톡 내민 손 (4줄). 분홍 젤리가 보여요
+    const KIT_ARM_UP  = [".KK.", "KLLK", "KPLK", "KBBK", "KBBK", ".KK."];
+    const KIT_ARM_TAP = [".KK.", "KLLK", "KPLK", ".KK."];
+    // 톡! 할 때 반짝
+    const TAP_SPARK = [".Y.", "YYY", ".Y."];
+
+    // 그림 조각 겹쳐 그리기 (index-v3 의 compose 와 같아요) : 뒤에 있는 조각이 위에 그려져요
+    function compose(w, h, layers) {
+      const grid = Array.from({ length: h }, () => Array(w).fill("."));
+      for (const [map, x, y] of layers) {
+        map.forEach((row, r) => [...row].forEach((ch, c) => {
+          if (ch !== "." && grid[y + r] && x + c >= 0 && x + c < w) grid[y + r][x + c] = ch;
+        }));
+      }
+      return grid.map(r => r.join(""));
+    }
+    const flip = map => map.map(r => [...r].reverse().join(""));   // 좌우 뒤집기 (왼손 버전 만들기)
+
+    // 평소 : 앉아서 꼬리만 살랑 (16칸 x 10줄)
+    const CAT_TAIL_L = compose(16, 10, [[BACK_HEAD, 2, 0], [KIT_BODY, 3, 7], [TAIL_L, 0, 5]]);
+    const CAT_TAIL_R = compose(16, 10, [[BACK_HEAD, 2, 0], [KIT_BODY, 3, 7], [TAIL_R, 13, 5]]);
+
+    // 잡기 : 뒷발로 서서 오른손 번쩍 → 톡 (16칸 x 14줄). 왼쪽 쥐는 좌우를 뒤집어서 왼손으로
+    const CAT_REACH_R = compose(16, 14, [[BACK_HEAD, 2, 3], [KIT_STAND, 3, 10], [KIT_ARM_UP, 12, 0], [TAIL_L, 0, 9]]);
+    const CAT_TAP_R   = compose(16, 14, [[BACK_HEAD, 2, 3], [KIT_STAND, 3, 10], [KIT_ARM_TAP, 12, 2], [TAP_SPARK, 8, 0], [TAIL_L, 0, 9]]);
+    const CAT_REACH_L = flip(CAT_REACH_R);
+    const CAT_TAP_L   = flip(CAT_TAP_R);
+    // 번쩍 든 손의 자리 : 그림 가운데(8칸)에서 옆으로 5.5칸, 발바닥에서 위로 12.5칸
+    //   톡 할 때는 손이 2칸 내려와서 쥐한테 닿아요
+    const PAW_X = 5.5;
+    const PAW_Y = 12.5;
+
+    // ----- 세리머니 : 앞모습 상체 (index-v3 의 CAT_HEAD · catHead 와 같아요) -----
+    const CAT_HEAD = [
+      ".K...KK...K.",
+      "KBK.KAAK.KBK",
+      "KBBKAaaAKBBK",
+      "KBBBTBBTBBBK",
+      "KBwBBBBBBwBK",   // 4 : 눈 윗칸 (반짝)
+      "KBEBBBBBBEBK",   // 5 : 눈 아랫칸
+      "KPBBBPPBBBPK",   // 6 : 볼터치 + 분홍 코
+    ];
+    // 눈만 바꿔 끼우기 : open 뜬 눈 / closed 감은 눈 / squint 가늘게 / cool 선글라스
+    function catHead(eyes = "open") {
+      const rows = CAT_HEAD.map(r => [...r]);
+      for (const x of [2, 9]) { rows[4][x] = "B"; rows[5][x] = "B"; }   // 눈 자리 비우기
+      if (eyes === "open")   for (const x of [2, 9]) { rows[4][x] = "w"; rows[5][x] = "E"; }
+      if (eyes === "closed") for (const x of [2, 3, 8, 9]) rows[5][x] = "K";
+      if (eyes === "squint") for (const x of [2, 3, 8, 9]) rows[5][x] = "E";
+      if (eyes === "cool") {
+        rows[4] = [..."KGgGGGGGgGGK"];   // 선글라스 테 + 반사 (g)
+        rows[5] = [..."KGGGGBBGGGGK"];   // 렌즈 아랫부분 : 4칸씩 꽉 채워서 크고 또렷하게
+      }
+      return rows.map(r => r.join(""));
+    }
+    const BUST_BODY = ["KBLLLLLLLLBK", "KBLLLLLLLLBK"];              // 가슴까지만 (상체)
+    const PAW_UP    = [".KK.", "KLLK", "KPLK", ".KBK", "..KK"];       // 번쩍 든 왼발
+    const PAW_UP_R  = [".KK.", "KLLK", "KLPK", "KBK.", "KK.."];       // 번쩍 든 오른발
+    const SWEAT     = ["..K..", ".KWK.", "KWWWK", "KWwWK", "KWWWK", ".KKK."];   // 큰 땀방울 (윤곽선 + 반짝)
+    const GLOOM     = ["N.N.N.", "N.N.N."];                          // 이마의 시무룩 줄
+    const FW_BIG    = ["Y.Y.Y", ".YYY.", "YYPYY", ".YYY.", "Y.Y.Y"];  // 폭죽 (큰 것)
+    const FW_SMALL  = [".R.", "RPR", ".R."];                          // 폭죽 (작은 것)
+    const SPARK     = [".Y.", "YYY", ".Y."];                          // 반짝!
+
+    // 상체 한 장 (28칸 x 12줄) : 머리 + 가슴 + 덧그림(extra)
+    const bust = (eyes, extra = []) => compose(28, 12, [[BUST_BODY, 8, 10], [catHead(eyes), 8, 3], ...extra]);
+    // 선글라스 다리 : 머리 양옆으로 한 칸씩 삐져나와서 귀에 건 것처럼 (머리는 8~19칸, 눈 줄은 7번째 줄)
+    const SHADES_ARMS = [[["G"], 7, 7], [["G"], 20, 7]];
+
+    // 세리머니 4가지 : 잡은 비율이 min 이상이면 그 세리머니 (위에서부터 차례로 확인)
+    //   frames 두 장을 번갈아 보여서 움직이는 것처럼 보여요
+    const CEREMONIES = [
+      { min: 90, line: "후훗. 당연한 결과지.",          // 선글라스 끼고 잘난 척
+        frames: [bust("cool", [[PAW_UP_R, 19, 3], ...SHADES_ARMS]),
+                 bust("cool", [[PAW_UP_R, 19, 3], ...SHADES_ARMS, [SPARK, 22, 1], [SPARK, 4, 4]])] },
+      { min: 70, line: "봤지? 이게 내 실력이야!",        // 폭죽 펑펑 + 두 앞발 만세
+        frames: [bust("open", [[PAW_UP, 5, 0], [PAW_UP_R, 19, 0], [FW_BIG, 0, 6], [FW_SMALL, 24, 1]]),
+                 bust("closed", [[PAW_UP, 5, 1], [PAW_UP_R, 19, 1], [FW_SMALL, 1, 1], [FW_BIG, 23, 6]])] },
+      { min: 50, line: "흥, 이 정도면 됐지.",            // 그냥 그런 날 : 느긋하게 눈 깜빡
+        frames: [bust("open"), bust("closed")] },
+      { min: 0,  line: "...쥐가 빨랐던 거야. 내 탓 아님.",  // 멋쩍음 : 머리 긁적긁적 + 땀이 주르륵 + 이마에 시무룩 줄
+        speed: 200, css: "awkward",                    // 빠르게 긁적이고, 몸은 어색하게 좌우로 흔들
+        frames: [0, 2, 4, 6].map((dropY, i) =>         // 4장 : 땀방울이 2칸씩 아래로 흘러내려요
+          bust("squint", [[GLOOM, 11, 6], [PAW_UP, 5, i % 2 ? 3 : 2], [SWEAT, 21, dropY]])) },
+    ];
+
+    // 그림 그리기 : 칸 하나마다 작은 div 하나. size 는 CSS 변수 (화면 크기에 맞게 바뀌어요)
+    function drawPixels(el, map, colors, size) {
+      el.innerHTML = "";
+      el.style.gridTemplateColumns = `repeat(${map[0].length}, ${size})`;
+      el.style.gridAutoRows = size;
+      for (const row of map) {
+        for (const ch of row) {
+          const pixel = document.createElement("div");
+          pixel.style.background = colors[ch] || "transparent";
+          el.appendChild(pixel);
+        }
+      }
+    }
+
+    // 아기 쥐 (8칸 x 7줄) : 엄마 쥐를 작게 줄인 모습
+    const BABY_MOUSE = [
+      ".KK..KK.",
+      "KPPKKPPK",
+      ".KMMMMK.",
+      "KMEMMEMK",
+      "KMMPPMMK",
+      "KmmmmmmK",
+      "KmmmmmmK",
+    ];
+    // 가족쥐 🐭🐭🐭 : 엄마 쥐 + 양옆에 아기 쥐 둘 (22칸). 한 구멍에서 셋이 같이 나와요
+    const FAMILY_MICE = compose(22, 10, [[BABY_MOUSE, 0, 3], [BABY_MOUSE, 14, 3], [MOUSE, 5, 0]]);
+
+    // 구멍 속 쥐 그림 바꾸기 (보통 쥐 / 가족쥐)
+    function drawMouse(hole, family) {
+      const el = hole.querySelector(".mole");
+      if (el.dataset.family === String(family)) return;   // 이미 그 그림이면 다시 안 그려요
+      el.dataset.family = family;
+      if (family) drawPixels(el, FAMILY_MICE, mouseColors, "var(--px-fam)");
+      else       drawPixels(el, MOUSE, mouseColors, "var(--px)");
+    }
+
+    // ===== 2. 구멍 9개 만들기 (3×3) =====
+    for (let i = 0; i < 9; i++) {
+      const hole = document.createElement("div");
+      hole.className = "hole";
+      hole.dataset.index = i;   // 몇 번 구멍인지 알려고
+      hole.innerHTML =
+        '<div class="dirt"><div class="pit"></div></div>' +
+        '<div class="mole-box"><div class="mole"></div></div>' +
+        '<span class="boom">💥</span>' +
+        '<span class="plus">+3</span>';
+      drawMouse(hole, false);
+      field.appendChild(hole);
+    }
+
+    // ===== 2-2. 고양이 : 웅크린 채 꼬리만 살랑살랑 =====
+    // 꼬리 왼쪽 ↔ 오른쪽 그림을 번갈아 보여요 (index-v3 의 "뒤돌아서 꼬리만 살랑살랑" 과 같은 방식)
+    const hunter    = document.getElementById("hunter");
+    const catMove   = document.getElementById("hunterMove");
+    const catSprite = document.getElementById("hunterSprite");
+    const TAIL_TIME = 450;     // 꼬리 한 번 흔드는 시간 (짧을수록 빨리 살랑)
+
+    let tailLeft = true;
+    let pouncing = false;      // 사냥하는 중이면 꼬리 그림을 멈춰요
+
+    function drawCat(map) { drawPixels(catSprite, map, catColors, "var(--cat-px)"); }
+    const idleCat = () => (tailLeft ? CAT_TAIL_L : CAT_TAIL_R);   // 지금 꼬리 방향의 평소 그림
+
+    setInterval(() => {
+      if (pouncing) return;
+      tailLeft = !tailLeft;
+      drawCat(idleCat());
+    }, TAIL_TIME);
+    drawCat(idleCat());
+
+    // ===== 3. 화면 숫자 바꾸기 =====
+    function render() {
+      scoreEl.textContent = score;
+      timeEl.textContent = timeLeft;
+      timeFill.style.width = (timeLeft / GAME_TIME * 100) + "%";   // 게이지도 같이 줄어요
+      timeBox.classList.toggle("hurry", timer !== null && timeLeft <= 5);
+    }
+
+    // ===== 4. 쥐 나왔다 들어가기 =====
+    //   박자를 일부러 들쭉날쭉하게 : 쉬는 시간이 매번 달라요 (엇박자)
+    //   가끔은 두 마리가 동시에, 가끔은 한 구멍에서 가족쥐 3마리가 한꺼번에 🐭🐭🐭
+    //   시간이 지날수록 점점 빨라져요
+    const holes = [...field.querySelectorAll(".hole")];
+
+    const BEATS       = [400, 550, 650, 650, 900, 900, 1200];  // 다음 쥐까지 쉬는 시간 후보 (ms) : 이 중에서 아무거나 (난이도 낮추기 : 0.25초 박자는 뺐어요)
+    const UP_MIN      = 800;    // 보통 쥐가 나와 있는 시간 : 가장 짧게 (난이도 낮추기 : 650 → 800)
+    const UP_MAX      = 1300;   //                          가장 길게 (1050 → 1300)
+    const FAMILY_UP   = 1000;   // 가족쥐가 나와 있는 시간
+    // 머무는 시간 늘리기 : 쥐마다 아래 두 번을 차례로 곱해요 (둘 다 1.2 ~ 1.5배 중 아무거나)
+    const STAY_MIN    = 1.2;    // 1차 : 20~50% 더 오래
+    const STAY_MAX    = 1.5;
+    const STAY2_MIN   = 1.2;    // 2차 (난이도 낮추기) : 거기서 또 20~50% 더 오래
+    const STAY2_MAX   = 1.5;
+    const DOUBLE_RATE = 0.15;   // 두 마리 동시에 나올 확률 (게임 끝으로 갈수록 + DOUBLE_RAMP)
+    const DOUBLE_RAMP = 0.10;
+    const FAMILY_RATE = 0.12;   // 가족쥐가 나올 확률
+    const FAMILY_SIZE = 3;      // 가족쥐는 3마리 : 한 번에 잡으면 3점, 잡은 수도 3마리
+    const MAX_UP      = 2;      // 한꺼번에 나와 있을 수 있는 구멍은 최대 2곳 (너무 정신없지 않게)
+    const SPEED_UP    = 0.15;   // 끝으로 갈수록 빨라지는 정도 (0.15 = 끝날 땐 15% 빨라요)
+
+    let spawnTimer = null;               // 다음 쥐 예약
+    const hideTimers = new Map();        // 구멍마다 "혼자 숨기" 예약
+
+    let appeared = 0;        // 이번 판에 나온 쥐 수 (잡은 비율 계산용)
+    let caughtCount = 0;     // 이번 판에 잡은 쥐 수 (가족쥐는 3마리)
+
+    const rand = (min, max) => min + Math.random() * (max - min);
+    // 0 (시작) → 1 (끝) : 지금 게임이 얼마나 지났는지
+    const progress = () => 1 - timeLeft / GAME_TIME;
+    // 시작할 땐 1배, 끝날 땐 (1 - SPEED_UP)배 시간 = 점점 조금씩 빨라져요
+    const speed = () => 1 - SPEED_UP * progress();
+
+    // 비어 있는 구멍 고르기 (나와 있거나, 막 터졌거나, 막 들어간 구멍은 빼요)
+    function freeHoles() {
+      const now = performance.now();
+      return holes.filter(h =>
+        !h.classList.contains("up") && !h.classList.contains("hit") && now >= (h.freeAt || 0));
+    }
+    function pickFree() {
+      if (holes.filter(h => h.classList.contains("up")).length >= MAX_UP) return null;
+      const list = freeHoles();
+      return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+    }
+
+    // 이 구멍에 쥐가 몇 마리 있는지 (가족쥐면 3, 아니면 1)
+    const miceIn = hole => (hole.classList.contains("family") ? FAMILY_SIZE : 1);
+
+    // 쥐 내보내기 (family = 가족쥐 3마리)
+    function popMouse(hole, family) {
+      drawMouse(hole, family);
+      hole.classList.toggle("family", family);
+      hole.classList.add("up");            // 쏙! 올라와요
+      appeared += miceIn(hole);
+
+      const base   = family ? FAMILY_UP : rand(UP_MIN, UP_MAX) * speed();
+      const upTime = base * rand(STAY_MIN, STAY_MAX) * rand(STAY2_MIN, STAY2_MAX);   // 쥐마다 더 오래 머물러요
+      hideTimers.set(hole, setTimeout(() => {
+        hole.classList.remove("up");       // 다시 쏙 들어가요
+        hole.freeAt = performance.now() + 300;   // 들어가는 동안은 그 구멍 비워 두기
+        hideTimers.delete(hole);
+      }, upTime));
+    }
+
+    // 다음 박자 : 쥐를 내보내고, 다음 박자를 또 예약해요 (잡든 말든 박자는 계속 흘러가요)
+    function spawn() {
+      const family = Math.random() < FAMILY_RATE && !holes.some(h => h.classList.contains("family") && h.classList.contains("up"));
+      const first = pickFree();
+      if (first) popMouse(first, family);
+
+      // 두 마리 동시에!
+      if (Math.random() < DOUBLE_RATE + DOUBLE_RAMP * progress()) {
+        const second = pickFree();
+        if (second) popMouse(second, false);
+      }
+
+      const beat = BEATS[Math.floor(Math.random() * BEATS.length)] * speed() + rand(-60, 60);   // 살짝 흔들어서 더 엇박으로
+      spawnTimer = setTimeout(spawn, beat);
+    }
+
+    // 쥐 멈추기 (게임 끝날 때)
+    function stopMoles() {
+      clearTimeout(spawnTimer);
+      spawnTimer = null;
+      hideTimers.forEach(t => clearTimeout(t));
+      hideTimers.clear();
+      holes.forEach(h => h.classList.remove("up", "caught", "hit"));
+    }
+
+    // ===== 5. 아기 고양이가 콩콩 다가가서 앞발로 톡! 쥐 잡기 =====
+    //   ① 쥐 쪽으로 콩콩 작게 뛰어가기 (마지막 한 번은 손 번쩍)
+    //   → ② 앞발로 톡 (이때 쥐가 잡혀요) → ③ 콩콩 제자리로
+    //   납작해지거나 기울지 않고 위아래로만 통통 = 2D 게임 같은 움직임
+    const BOOM_TIME  = 350;   // 💥 이펙트가 보이는 시간 (CSS 애니메이션 길이와 같게)
+    const HOP_TIME   = 140;   // 다가갈 때 콩 한 번 (ms)
+    const BACK_HOP   = 110;   // 돌아올 때 콩 한 번 (조금 더 빨리)
+    const HOP_HEIGHT = 14;    // 콩 뛸 때 위로 뜨는 높이 (px)
+    const HOP_DIST   = 110;   // 이 거리(px)마다 한 번씩 콩 (멀수록 여러 번)
+    const TAP_HOLD   = 240;   // 톡 하고 손을 대고 있는 시간
+
+    let flight = null;       // 지금 하고 있는 움직임
+    let poseTimers = [];     // 움직이는 도중 그림 바꾸기 예약
+
+    // 고양이 그림 칸 하나가 지금 몇 px 인지 (화면 크기에 따라 달라요)
+    const catPx = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cat-px"));
+
+    // (fx, fy) → (tx, ty) 를 hops 번 콩콩 뛰어가는 길. t0 부터 한 번에 hopMs 씩, 전체 total 기준 비율로 적어요
+    function hopPath(fx, fy, tx, ty, hops, t0, hopMs, total) {
+      const frames = [];
+      for (let i = 1; i <= hops; i++) {
+        const mid = (i - 0.5) / hops, end = i / hops;
+        frames.push({ transform: `translate(${fx + (tx - fx) * mid}px, ${fy + (ty - fy) * mid - HOP_HEIGHT}px)`,
+                      offset: (t0 + (i - 0.5) * hopMs) / total, easing: "ease-in" });    // 콩 : 위로
+        frames.push({ transform: `translate(${fx + (tx - fx) * end}px, ${fy + (ty - fy) * end}px)`,
+                      offset: (t0 + i * hopMs) / total, easing: "ease-out" });          //     내려앉기
+      }
+      return frames;
+    }
+    const hopsFor = (dx, dy) => Math.max(1, Math.min(4, Math.round(Math.hypot(dx, dy) / HOP_DIST)));
+
+    // 고양이를 hole 까지 콩콩 보내고, 앞발이 톡 닿는 순간 onArrive 를 불러요
+    function pounce(hole, onArrive) {
+      const px   = catPx();
+      const home = hunter.getBoundingClientRect();
+      const box  = hole.getBoundingClientRect();
+      const mouseX = box.left + box.width / 2;
+      const mouseY = box.top + box.height * 0.5;                 // 쥐 얼굴 높이
+      const side = mouseX >= home.left + home.width / 2 ? 1 : -1;   // 쥐가 오른쪽이면 오른손, 왼쪽이면 왼손
+
+      // 몸이 아니라 "번쩍 든 손" 이 쥐 바로 위(2칸 위)에 오도록 몸 위치를 거꾸로 계산해요
+      const dx = mouseX - (home.left + home.width / 2 + side * PAW_X * px);
+      const dy = (mouseY - 2 * px) - (home.bottom - PAW_Y * px);
+
+      // 이미 움직이고 있었다면 그 자리에서 바로 다시 출발 (순간이동하지 않게)
+      const now = getComputedStyle(catMove).transform;
+      const from = now === "none" ? new DOMMatrix() : new DOMMatrix(now);
+      if (flight) flight.cancel();
+      poseTimers.forEach(clearTimeout);
+
+      const goHops   = hopsFor(dx - from.m41, dy - from.m42);
+      const backHops = hopsFor(dx, dy);
+      const goTime   = goHops * HOP_TIME;
+      const total    = goTime + TAP_HOLD + backHops * BACK_HOP;
+
+      pouncing = true;
+      drawCat(idleCat());
+      flight = catMove.animate([
+        { transform: `translate(${from.m41}px, ${from.m42}px)`, offset: 0 },
+        ...hopPath(from.m41, from.m42, dx, dy, goHops, 0, HOP_TIME, total),   // ① 콩콩 다가가기
+        { transform: `translate(${dx}px, ${dy}px)`, offset: (goTime + TAP_HOLD) / total },   // ② 톡 하고 잠깐 그대로
+        ...hopPath(dx, dy, 0, 0, backHops, goTime + TAP_HOLD, BACK_HOP, total),   // ③ 콩콩 돌아오기
+      ], { duration: total });
+
+      // 그림 바꾸기 : 마지막 콩에서 손 번쩍 → 닿으면 톡 → 다 하면 평소 모습
+      const at = (ms, fn) => poseTimers.push(setTimeout(fn, ms));
+      at(goTime - HOP_TIME, () => drawCat(side > 0 ? CAT_REACH_R : CAT_REACH_L));
+      at(goTime,            () => drawCat(side > 0 ? CAT_TAP_R : CAT_TAP_L));
+      at(goTime + TAP_HOLD, () => drawCat(idleCat()));
+      // 쥐 잡기는 따로 예약해요 : 도중에 다른 쥐로 방향을 바꿔도, 먼저 찜한 쥐는 꼭 잡히게
+      setTimeout(onArrive, goTime);
+
+      flight.onfinish = () => {
+        flight = null;
+        pouncing = false;
+        drawCat(idleCat());
+      };
+    }
+
+    // 잔디밭 전체에서 누르기를 듣고, 쥐가 나와 있는 구멍을 눌렀을 때만 고양이가 잡으러 가요.
+    //   (난이도 낮추기) 작은 쥐 그림을 정확히 안 눌러도, 그 구멍 칸 아무 데나 누르면 잡혀요.
+    //   빈 구멍이나 잔디를 누르면 아무 일도 없어요.
+    field.addEventListener("pointerdown", (e) => {
+      if (timer === null) return;          // 게임 중이 아니면 눌러도 소용없어요
+      const hole = e.target.closest(".hole");
+      if (!hole) return;
+      // 나와 있고, 아직 아무도 찜하지 않은 쥐만! 찜하자마자 "caught" 가 붙으니까 연타해도 한 번만 올라요.
+      if (!hole.classList.contains("up") || hole.classList.contains("caught")) return;
+
+      const count = miceIn(hole);          // 가족쥐면 한 번에 3마리!
+      score += count;
+      caughtCount += count;
+      render();
+
+      hole.classList.add("caught");        // 찜! 쥐는 얼어붙어서 고양이를 기다려요
+      clearTimeout(hideTimers.get(hole));  // 혼자 숨으려던 예약은 취소
+      hideTimers.delete(hole);
+
+      pounce(hole, () => {
+        if (timer === null) return;        // 그 사이에 시간이 끝났으면 그만
+        hole.classList.remove("up", "caught");
+        hole.classList.add("hit");         // 쥐는 바로 사라지고 💥 가 터져요 (가족쥐면 +3 도)
+        setTimeout(() => {
+          hole.classList.remove("hit");
+          hole.freeAt = performance.now() + 150;
+        }, BOOM_TIME);
+      });
+    });
+
+    // ===== 6. 게임 시작 / 끝 =====
+    // 30초 동안 1초마다 시간이 줄고, 0이 되면 endGame 이 불려요.
+    function startGame() {
+      score = 0;                           // 다시 하기를 눌러도 0점, 30초부터 새로
+      appeared = 0;
+      caughtCount = 0;
+      timeLeft = GAME_TIME;
+      stopCeremony();
+      resultEl.hidden = true;
+      startBtn.disabled = true;
+      startBtn.textContent = "게임 중...";
+
+      timer = setInterval(() => {
+        timeLeft--;
+        render();
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+      render();
+      spawn();
+    }
+
+    function endGame() {
+      clearInterval(timer);
+      timer = null;
+
+      // 시간이 끝날 때 아직 나와 있던 쥐는 끝까지 기회를 못 줬으니 비율 계산에서 빼요
+      appeared -= holes.filter(h => h.classList.contains("up") && !h.classList.contains("caught")).reduce((n, h) => n + miceIn(h), 0);
+
+      stopMoles();                         // 쥐 그만! 다 숨어요
+      startBtn.disabled = false;
+      startBtn.textContent = "다시 하기";
+      render();
+
+      // 잡은 비율 (%) : 잡은 쥐 ÷ 나온 쥐 (가족쥐는 3마리로 세요)
+      const rate = appeared > 0 ? Math.round(caughtCount / appeared * 100) : 0;
+
+      // 결과 화면 보여 주기
+      finalEl.textContent = score;
+      rateEl.textContent = `잡은 비율 ${rate}% (${caughtCount}/${appeared}마리)`;
+      resultEl.hidden = false;
+      retryBtn.focus();
+
+      // 1.8초 뒤에 세리머니
+      ceremonyTimer = setTimeout(() => showCeremony(rate), CEREMONY_DELAY);
+    }
+
+    // ===== 7. 승리 세리머니 =====
+    const ceremonyEl     = document.getElementById("ceremony");
+    const ceremonySprite = document.getElementById("ceremonySprite");
+    const ceremonyLine   = document.getElementById("ceremonyLine");
+    const rateEl         = document.getElementById("finalRate");
+    const CEREMONY_DELAY = 1800;   // 게임 끝나고 세리머니까지 기다리는 시간 (1.8초)
+    const CEREMONY_FRAME = 350;    // 세리머니 그림 두 장을 번갈아 보이는 간격
+
+    let ceremonyTimer = null;      // 1.8초 기다리는 타이머
+    let ceremonyLoop  = null;      // 그림 번갈아 보이는 타이머
+
+    function showCeremony(rate) {
+      const c = CEREMONIES.find(c => rate >= c.min);   // 위에서부터 처음 맞는 것
+      let frame = 0;
+      const draw = () => drawPixels(ceremonySprite, c.frames[frame % c.frames.length], catColors, "var(--cer-px)");
+      draw();
+      ceremonyLoop = setInterval(() => { frame++; draw(); }, c.speed || CEREMONY_FRAME);
+      ceremonyEl.dataset.css = c.css || "";            // 세리머니별 추가 움직임 (CSS)
+
+      ceremonyLine.textContent = `${catName}: ${c.line}`;
+      ceremonyEl.classList.add("show");                // 쑥 떠올라요
+    }
+
+    function stopCeremony() {
+      clearTimeout(ceremonyTimer);
+      clearInterval(ceremonyLoop);
+      ceremonyEl.classList.remove("show");
+      ceremonyEl.dataset.css = "";
+    }
+
+    startBtn.addEventListener("click", startGame);
+    retryBtn.addEventListener("click", startGame);
+    render();
+  </script>
+</body>
+</html>

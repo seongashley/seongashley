@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>가위바위보!</title>
+
+  <!-- 한글 픽셀 폰트 (갈무리) : 인터넷이 연결되어 있어야 보여요 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+
+  <style>
+    /* ===== 색깔 모음 : 게임(index-v3.html)과 같은 연두 / 연보라 / 갈색 + 크림 ===== */
+    :root {
+      --green:   #b5e061;
+      --green-l: #e4f6bd;
+      --green-d: #5a8a1e;
+      --lav:     #cdb8f0;
+      --lav-l:   #f1e9ff;
+      --lav-d:   #6b4fa0;
+      --brown:   #9a6634;
+      --brown-l: #d9b48a;
+      --tan:     #f3e3cc;   /* 아주 연한 갈색 (보 버튼) */
+      --brown-d: #3f2412;   /* 글자·테두리 */
+      --cream:   #fffaf0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      justify-items: center;
+      align-items: start;   /* 위쪽에 붙여 둬요 : 가운데 정렬이면 결과 칸 높이가 바뀔 때마다 상자 전체가 들썩여요 */
+      padding: 40px 16px 24px;
+      font-family: "Galmuri11", "DungGeunMo", monospace;
+      color: var(--brown-d);
+      /* 하늘색 바탕에 도트 무늬 */
+      background: var(--lav-l) radial-gradient(var(--lav) 2px, transparent 2px) 0 0 / 16px 16px;
+    }
+
+    /* ===== 오락기 화면 ===== */
+    .cabinet {
+      width: min(100%, 520px);
+      padding: 20px 18px 24px;
+      text-align: center;
+      background: var(--cream);
+      border: 5px solid var(--brown-d);
+      box-shadow: 8px 8px 0 var(--lav-d);   /* 흐림 없는 그림자 = 도트 느낌 */
+      position: relative;
+    }
+
+    /* 소리 켜기/끄기 : 오락기 오른쪽 위 모서리에 톡 */
+    .sound {
+      position: absolute;
+      top: -18px;
+      right: -18px;
+      width: 44px;
+      height: 44px;
+      font-size: 20px;
+      cursor: pointer;
+      background: var(--green);
+      border: 4px solid var(--brown-d);
+      box-shadow: 3px 3px 0 var(--brown-d);
+    }
+    .sound[aria-pressed="false"] { background: var(--cream); }
+    .sound:active { transform: translate(3px, 3px); box-shadow: none; }
+    .sound:focus-visible { outline: 4px dashed var(--lav-d); outline-offset: 3px; }
+
+    /* ===== "가위! 바위! 보!" : 음악 박자에 맞춰 두 선수가 위아래로 콩콩 (손은 링에 안 보여요) ===== */
+    .char .px-hand { transform-origin: 50% 100%; }
+    .char .pump   { animation: pump var(--beat, 0.4s) ease-out; }     /* 크게 쿵 */
+    .char .pump-s { animation: pump-s var(--beat, 0.4s) ease-out; }   /* 작게 콩 */
+    @keyframes pump-s { 40% { transform: translateY(-6px); } }
+    @keyframes pump {
+      35% { transform: translateY(-16px) scale(1.05, 0.95); }
+    }
+
+    /* ===== 한 판 결과 : 이긴 쪽은 승리 액션(랜덤), 진 쪽은 털썩 주저앉아 부들부들 ===== */
+    .char { position: relative; }
+    /* 집사 : 알통 불끈불끈 */
+    .char .act-flex { animation: flex 0.6s steps(2) 4; }
+    @keyframes flex { 50% { transform: scale(1.08, 0.94); } }
+    /* 집사 : 나팔 빠라밤~ (몸을 들썩) + 음표가 둥실 */
+    .char .act-trumpet { animation: toot 0.5s steps(2) 5; transform-origin: 30% 100%; }
+    @keyframes toot { 50% { transform: rotate(-6deg) translateY(-3px); } }
+    .notes {
+      position: absolute;
+      top: -6px;
+      right: -26px;
+      font-size: 20px;
+      color: var(--lav-d);
+      text-shadow: 2px 2px 0 var(--cream);
+      animation: notes 1.2s steps(4) infinite;
+    }
+    @keyframes notes {
+      from { transform: translateY(14px); opacity: 0; }
+      30%  { opacity: 1; }
+      to   { transform: translate(10px, -24px); opacity: 0; }
+    }
+    /* 집사 : 축배를 번쩍, 번쩍 */
+    .char .act-toast { animation: toast 0.7s steps(3) 4; }
+    @keyframes toast { 50% { transform: translateY(-8px) rotate(3deg); } }
+    /* 도토리 : 휭~ 날아올라 공중에서 둥실둥실 */
+    .char .act-fly { animation: fly-up 0.4s steps(4) forwards, hover 1s steps(4) 0.4s infinite; }
+    @keyframes fly-up { to { translate: 0 -64px; } }
+    @keyframes hover {
+      0%, 100% { transform: translateY(0) rotate(-4deg); }
+      50%      { transform: translateY(-8px) rotate(4deg); }
+    }
+    /* ===== 깁스 : 가위 버튼에 붕대 딱지 / 안 펴진 쪽은 부들부들 / 도토리 붕대 앞발 ===== */
+    .hand { position: relative; }
+    .cast-badge {
+      display: none;
+      position: absolute;
+      top: -12px;
+      right: -8px;
+      padding: 2px 6px;
+      font-size: 12px;
+      background: var(--cream);
+      border: 3px solid var(--brown-d);
+      transform: rotate(8deg);
+    }
+    .hand.casted .cast-badge { display: block; }
+    .char .fumble { animation: fumble 0.2s steps(2) 4; }
+    @keyframes fumble {
+      25% { transform: translateX(-5px) rotate(-4deg); }
+      75% { transform: translateX(5px) rotate(4deg); }
+    }
+    .cast-paw { position: absolute; z-index: 1; left: 6px; bottom: -4px; }
+    .final-cast { margin: -6px 0 14px; font-size: 13px; }
+    .final-cast:empty { display: none; }
+
+    /* 도토리 : 꾹꾹이 → 앞발 두 개가 번갈아 꾹, 꾹 (오른발은 반 박자 늦게) */
+    .paw { position: absolute; z-index: 1; bottom: -5px; animation: knead 0.6s steps(2) infinite; }
+    .paw.l { left: 10px; }
+    .paw.r { left: 35px; animation-delay: -0.3s; }
+    @keyframes knead { 50% { transform: translateY(-6px); } }
+    /* 도토리 : 상자에 쏙 → 꼬리만 살랑살랑 */
+    .char .act-box { animation: pop 0.35s steps(3); }
+    .tail {
+      position: absolute;
+      left: 40px;                     /* 상자 위, 가운데에서 살짝 옆 */
+      top: -32px;
+      transform-origin: 50% 100%;
+      animation: wag 0.8s steps(4) infinite;
+    }
+    @keyframes wag {
+      0%, 100% { transform: rotate(-22deg); }
+      50%      { transform: rotate(22deg); }
+    }
+    .char .sulk { animation: sulk 0.9s steps(6) forwards; }
+    @keyframes sulk {
+      0%   { transform: translate(0, 0) scale(1); }
+      30%  { transform: translate(0, 0) scale(1.06, 0.88); }     /* 털썩 */
+      45%  { transform: translate(-3px, 0) scale(1.06, 0.88); }  /* 부들 */
+      60%  { transform: translate(3px, 0) scale(1.06, 0.88); }
+      75%  { transform: translate(-3px, 0) scale(1.06, 0.88); }
+      100% { transform: translate(0, 0) scale(1.06, 0.88); }     /* 주저앉은 채로 */
+    }
+    /* 고른 버튼은 빛나고, 노래하는 동안 다른 버튼은 잠깐 쉬어요 */
+    .hand.picked:disabled { opacity: 1; background: var(--green); }
+
+    /* 맨 위 제목 */
+    .title {
+      margin: 0 0 6px;
+      padding: 12px 8px;
+      font-size: clamp(28px, 8vw, 40px);
+      letter-spacing: 2px;
+      background: var(--green);
+      border: 4px solid var(--brown-d);
+      text-shadow: 3px 3px 0 var(--lav-d);
+    }
+    .sub {
+      margin: 0 0 22px;
+      font-size: 13px;
+      opacity: 0.75;
+    }
+
+    /* ===== 가위 · 바위 · 보 큰 버튼 3개 ===== */
+    .hands {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .hand {
+      font: inherit;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 128px;
+      padding: 12px 4px;
+      cursor: pointer;
+      color: var(--brown-d);
+      border: 4px solid var(--brown-d);
+      box-shadow: 5px 5px 0 var(--brown-d);
+      transition: transform 0.08s steps(2), box-shadow 0.08s steps(2);
+    }
+    /* 도트 손 : 칸 하나 = 픽셀 하나 (JavaScript 가 채워요) */
+    .px-hand { display: inline-grid; }
+    .hand .px-hand { margin: 4px 0 2px; }
+    .hand .name { font-size: 18px; }
+    .hand.scissors { background: var(--lav-l); }
+    .hand.rock     { background: var(--green-l); }
+    .hand.paper    { background: var(--tan); }
+    .hand:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--brown-d); }
+    .hand:active { transform: translate(5px, 5px); box-shadow: none; }   /* 꾹 눌리는 느낌 */
+    .hand:focus-visible { outline: 4px dashed var(--lav-d); outline-offset: 4px; }
+
+    /* ===== 링 : 가운데에서 집사(나) vs 도토리 대결 =====
+       높이를 정해 둬서, 손·글자·결과가 바뀌어도 상자 전체는 움직이지 않아요 */
+    .ring {
+      position: relative;
+      height: 260px;
+      margin-top: 26px;
+      overflow: hidden;
+      background: var(--lav-l);
+      border: 4px solid var(--brown-d);
+    }
+    .ring::before {                     /* 링 바닥 매트 */
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 26%;
+      background: repeating-linear-gradient(90deg, var(--green-l) 0 20px, var(--green) 20px 22px);
+      border-top: 4px solid var(--brown-d);
+    }
+    .ropes {                            /* 링 줄 3가닥 + 양쪽 기둥 */
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 70px;
+      height: 90px;
+      border-top: 4px solid var(--lav-d);
+      border-bottom: 4px solid var(--lav-d);
+    }
+    .ropes::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      border-top: 4px solid var(--lav-d);
+    }
+    .post {
+      position: absolute;
+      top: 60px;
+      bottom: 26%;
+      width: 12px;
+      background: var(--brown);
+      border: 3px solid var(--brown-d);
+    }
+    .post.left  { left: 6px; }
+    .post.right { right: 6px; }
+
+    /* 가운데 위 알림판 : "안 내면 진다" → "가위!" → 결과 */
+    .call {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      z-index: 2;
+      transform: translateX(-50%);
+      padding: 4px 14px;
+      font-size: clamp(18px, 5.5vw, 24px);
+      white-space: nowrap;
+      color: var(--brown-d);
+      background: var(--cream);
+      border: 3px solid var(--brown-d);
+      box-shadow: 3px 3px 0 var(--brown-d);
+    }
+    .call.win  { background: var(--green); }
+    .call.lose { background: var(--lav); }
+    .call.draw { background: var(--green-l); }
+
+    /* 두 선수 : 캐릭터 → 이름표 (발은 매트 위에) */
+    .fighter {
+      position: absolute;
+      bottom: 12px;
+      z-index: 1;
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+    }
+    .fighter.me  { left: 14%; }
+    .fighter.cat { right: 14%; }
+
+    .char { display: grid; }
+    .cat .char { transform: scaleX(-1); }   /* 도토리는 집사 쪽을 보게 */
+    .tag {
+      padding: 0 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      background: var(--cream);
+      border: 2px solid var(--brown-d);
+    }
+    @media (max-width: 400px) {
+      .fighter.me  { left: 6%; }
+      .fighter.cat { right: 6%; }
+    }
+    /* ===== 마지막 판 연출 : 영화처럼 위아래 검은 띠 + 만화처럼 집중선 위로 상반신 클로즈업이 번갈아 쾅! ===== */
+    .bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 5;
+      height: 26px;
+      background: #1c120b;
+      transform: scaleY(0);
+      transition: transform 0.4s ease;
+    }
+    .bar.top { top: 0; transform-origin: top; }
+    .bar.bot { bottom: 0; transform-origin: bottom; }
+    .ring.cinema .bar { transform: scaleY(1); }
+    .cutin {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      display: flex;
+      align-items: flex-end;
+      overflow: hidden;
+      /* 집중선 : 가운데로 모이는 갈색 줄 + 가운데는 크림색으로 비워요 */
+      background:
+        radial-gradient(circle at 50% 50%, var(--cream) 0 22%, transparent 60%),
+        repeating-conic-gradient(from 0deg at 50% 50%, var(--brown-d) 0 1.5deg, var(--cream) 1.5deg 7deg);
+    }
+    .cutin[hidden] { display: none; }
+    .cutin.me  { justify-content: flex-start; background-color: var(--lav-l); }
+    .cutin.cat { justify-content: flex-end; }
+    .cutin-art { position: relative; display: grid; margin: 0 6% 26px; }
+    .cutin.me  .cutin-art { animation: slide-l 0.25s steps(3); }
+    .cutin.cat .cutin-art { animation: slide-r 0.25s steps(3); transform: scaleX(-1); }   /* 도토리는 집사 쪽을 보게 */
+    @keyframes slide-l { from { transform: translateX(-120%); } }
+    @keyframes slide-r { from { transform: scaleX(-1) translateX(-120%); } }
+    .cutin-line {
+      position: absolute;
+      top: 38px;
+      font-size: clamp(26px, 8vw, 40px);
+      white-space: nowrap;
+      color: var(--cream);
+      text-shadow: 3px 3px 0 var(--brown-d), -2px -2px 0 var(--brown-d), 2px -2px 0 var(--brown-d), -2px 2px 0 var(--brown-d);
+      animation: pop 0.3s steps(3);
+    }
+    .cutin.me  .cutin-line { right: 8%; }
+    .cutin.cat .cutin-line { left: 8%; }
+    .cutin.title { justify-content: center; align-items: center; }
+    .cutin.title .cutin-line { position: static; color: var(--green); font-size: clamp(30px, 9vw, 44px); }
+    .flash {                            /* "보!" 순간 하얗게 번쩍 */
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      pointer-events: none;
+      background: #fff;
+      opacity: 0;
+    }
+    .flash.on { animation: flash 0.5s ease-out; }
+    @keyframes flash { from { opacity: 1; } }
+
+    .pop { animation: pop 0.35s steps(3); }   /* 결과가 바뀔 때마다 톡 */
+    @keyframes pop { from { transform: scale(0.6); } }
+
+    /* ===== 점수판 : "나 2 : 1 도토리" 크게 ===== */
+    .score {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 0 0 18px;
+      padding: 8px 12px;
+      font-size: 16px;
+      background: var(--green-l);
+      border: 4px solid var(--brown-d);
+    }
+    .score b { font-size: clamp(36px, 10vw, 48px); font-weight: normal; line-height: 1; min-width: 1ch; }
+    .score .colon { font-size: 28px; opacity: 0.5; }
+    .goal { margin: -10px 0 14px; font-size: 12px; opacity: 0.7; }
+
+    /* 최종 승리가 나면 버튼은 잠깐 쉬어요 */
+    .hand:disabled { cursor: default; opacity: 0.45; transform: none; box-shadow: 5px 5px 0 var(--brown-d); }
+
+    /* ===== 최종 결과 팝업 : 게임 화면 위에 떠요. 화면 자리를 차지하지 않아서 뒤의 상자는 그대로예요 ===== */
+    .final-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 18;                 /* 색종이(20)는 팝업 앞, 흑백 막(30)은 맨 앞 */
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgb(63 36 18 / 0.5);
+    }
+    .final-wrap[hidden] { display: none; }
+    .final {
+      width: min(100%, 420px);
+      padding: 22px 14px;
+      text-align: center;
+      background: var(--cream);
+      border: 5px solid var(--brown-d);
+      box-shadow: 6px 6px 0 var(--brown-d);
+    }
+    .final.win  { background: var(--green); }
+    .final.lose { background: var(--lav-l); }
+    .final-msg { margin: 0 0 6px; font-size: clamp(26px, 8vw, 36px); text-shadow: 3px 3px 0 var(--cream); }
+    .final-sub { margin: 0 0 14px; font-size: 14px; }
+    .again {
+      font: inherit;
+      min-height: 48px;
+      padding: 10px 28px;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--brown-d);
+      background: var(--green);
+      border: 4px solid var(--brown-d);
+      box-shadow: 5px 5px 0 var(--brown-d);
+    }
+    .again:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--brown-d); }
+    .again:active { transform: translate(5px, 5px); box-shadow: none; }
+    .again:focus-visible { outline: 4px dashed var(--lav-d); outline-offset: 4px; }
+
+    /* ===== 이겼을 때 : 색종이가 펑! 터져서 흩날려요 ===== */
+    .confetti { position: fixed; inset: 0; z-index: 20; overflow: hidden; pointer-events: none; }
+    .confetti i {
+      position: absolute;
+      width: 10px;
+      height: 14px;
+      border: 2px solid var(--brown-d);
+      animation: burst var(--dur) cubic-bezier(.2, .6, .4, 1) forwards;
+    }
+    @keyframes burst {
+      0%   { transform: translate(0, 0) rotate(0deg); }
+      30%  { transform: translate(var(--dx), var(--up)) rotate(calc(var(--rot) * .3)); }
+      100% { transform: translate(calc(var(--dx) * 1.5), 105vh) rotate(var(--rot)); opacity: .85; }
+    }
+
+    /* ===== 졌을 때 : 화면이 흑백으로 (다음 판을 시작하면 다시 색이 돌아와요) ===== */
+    /*   화면 전체(배경 무늬까지)를 덮는 투명한 막이 뒤를 흑백으로 바꿔요 */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      pointer-events: none;
+      -webkit-backdrop-filter: grayscale(0);
+      backdrop-filter: grayscale(0);
+      transition: backdrop-filter 0.6s ease, -webkit-backdrop-filter 0.6s ease;
+    }
+    body.gray::before { -webkit-backdrop-filter: grayscale(1); backdrop-filter: grayscale(1); }
+
+    /* ===== 최종 승리 : 트로피 + 반짝이는 줄무늬 배경 ===== */
+    .trophy { display: none; font-size: clamp(64px, 20vw, 96px); line-height: 1.1; }
+    .final.win .trophy { display: block; animation: trophy 1.2s ease-in-out infinite; }
+    @keyframes trophy {
+      0%, 100% { transform: translateY(0) rotate(-6deg); }
+      50%      { transform: translateY(-10px) rotate(6deg); }
+    }
+    .final.win {
+      background: repeating-linear-gradient(-45deg, var(--green) 0 18px, var(--green-l) 18px 36px);
+      background-size: 200% 200%;
+      animation: shine 2s linear infinite;
+      box-shadow: 6px 6px 0 var(--brown-d), 0 0 0 6px var(--lav-d);
+    }
+    @keyframes shine { to { background-position: 100% 100%; } }
+    .final.win .final-msg { color: var(--brown-d); text-shadow: 3px 3px 0 var(--lav-d); }
+    .sparkles { display: none; font-size: 22px; letter-spacing: 8px; }
+    .final.win .sparkles { display: block; animation: twinkle 0.8s steps(2) infinite; }
+    @keyframes twinkle { 50% { opacity: 0.3; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hand, .again, body::before { transition: none; }
+      .pop, .final.win, .final.win .trophy, .final.win .sparkles, .char .pump, .char .pump-s, .char .sulk, .char [class*="act-"], .notes, .tail, .paw, .char .fumble,
+      .cutin-art, .cutin-line, .flash.on { animation: none; }
+      .bar { transition: none; }
+      .confetti { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="cabinet">
+    <h1 class="title">가위바위보!</h1>
+    <!-- 소리 켜기/끄기 (고른 건 이 기기에서 기억해요) : 화면에서는 오락기 오른쪽 위 모서리에 떠 있어요 -->
+    <button class="sound" id="sound" aria-pressed="true" aria-label="소리 끄기">🔊</button>
+    <p class="sub" id="sub">하나를 골라 주세요</p>
+
+    <!-- 점수판 : 먼저 3점을 얻는 쪽이 최종 승리 -->
+    <div class="score" aria-label="점수">
+      <span>나</span><b id="score-me">0</b><span class="colon">:</span><b id="score-com">0</b><span id="cat-label">도토리</span>
+    </div>
+    <p class="goal">먼저 3점 내면 최종 승리!</p>
+
+    <!-- 큰 버튼 3개 : 누르면 도토리도 하나를 내고, 아래 링에서 승패가 나와요 -->
+    <div class="hands">
+      <button class="hand scissors" data-hand="scissors"><span class="px-hand" data-px="scissors" aria-hidden="true"></span><span class="name">가위</span><span class="cast-badge" aria-hidden="true"></span></button>
+      <button class="hand rock" data-hand="rock"><span class="px-hand" data-px="rock" aria-hidden="true"></span><span class="name">바위</span></button>
+      <button class="hand paper" data-hand="paper"><span class="px-hand" data-px="paper" aria-hidden="true"></span><span class="name">보</span></button>
+    </div>
+
+    <!-- 링 : 집사(나) vs 도토리(컴퓨터 역할). 높이가 정해져 있어서 무엇이 바뀌어도 상자는 그대로예요 -->
+    <div class="ring" id="result">
+      <div class="ropes" aria-hidden="true"></div>
+      <div class="post left" aria-hidden="true"></div>
+      <div class="post right" aria-hidden="true"></div>
+      <div class="call" id="call" aria-live="polite">하나를 골라 봐!</div>
+      <div class="fighter me">
+        <div class="char" id="char-me"></div>
+        <span class="tag" id="tag-me">나</span>
+      </div>
+      <div class="fighter cat">
+        <div class="char" id="char-cat"></div>
+        <span class="tag" id="tag-cat">도토리</span>
+      </div>
+      <!-- 마지막 판 연출 : 클로즈업 컷 + 영화 띠 + 번쩍 -->
+      <div class="cutin" id="cutin" hidden aria-hidden="true"><div class="cutin-art" id="cutin-art"></div><span class="cutin-line" id="cutin-line"></span></div>
+      <div class="bar top" aria-hidden="true"></div>
+      <div class="bar bot" aria-hidden="true"></div>
+      <div class="flash" id="flash" aria-hidden="true"></div>
+    </div>
+
+    <!-- 최종 결과 팝업 : 누가 먼저 3점을 내면 게임 화면 위에 떠요 (뒤의 화면은 그대로) -->
+    <div class="final-wrap" id="final-wrap" hidden>
+    <div class="final" id="final" role="dialog" aria-modal="true" aria-labelledby="final-msg">
+      <div class="sparkles" aria-hidden="true">✨⭐✨⭐✨</div>
+      <div class="trophy" aria-hidden="true">🏆</div>
+      <p class="final-msg" id="final-msg"></p>
+      <p class="final-sub" id="final-sub"></p>
+      <p class="final-cast" id="final-cast"></p>
+      <button class="again" id="again">🔄 다시 하기</button>
+    </div>
+    </div>
+  </main>
+
+  <script>
+    // 가위·바위·보 정보 : 이모지와 이름, 그리고 "무엇을 이기는지"
+    const HANDS = {
+      scissors: { emoji: "✌️", name: "가위", beats: "paper" },
+      rock:     { emoji: "✊", name: "바위", beats: "scissors" },
+      paper:    { emoji: "✋", name: "보",   beats: "rock" },
+    };
+
+    // ---------------------------------------------------------
+    // 도트 손 (8칸 x 10줄, 단순하게) : 글자 하나 = 픽셀 하나 ("." 은 투명)
+    //   K 윤곽선(짙은 갈색) / S 피부 / C 소매
+    // ---------------------------------------------------------
+    const HAND_COLORS = { K: "#4A2F27", S: "#f9dcc0", C: "#cdb8f0" };   // 집사 손 (연보라 소매)
+    const HAND_SPRITES = {
+      rock: [                // 바위 : 동그란 주먹
+        "........",
+        "........",
+        "........",
+        ".KKKKKK.",
+        "KSKSKSSK",
+        "KSKSKSSK",
+        "KSSSSSSK",
+        ".KSSSSK.",
+        ".KCCCCK.",
+        ".KKKKKK.",
+      ],
+      scissors: [            // 가위 : 손가락 두 개
+        "..K..K..",
+        ".KSKKSK.",
+        ".KSKKSK.",
+        ".KSKKSK.",
+        "KSSSSSSK",
+        "KSKSSSSK",
+        "KSSSSSSK",
+        ".KSSSSK.",
+        ".KCCCCK.",
+        ".KKKKKK.",
+      ],
+      paper: [               // 보 : 손가락 쫙
+        "..K.K.K.",
+        ".KSKSKSK",
+        ".KSKSKSK",
+        "KKSSSSSK",
+        "KSSSSSSK",
+        "KSSSSSSK",
+        "KSSSSSSK",
+        ".KSSSSK.",
+        ".KCCCCK.",
+        ".KKKKKK.",
+      ],
+    };
+
+    // 두 선수 : index-v3.html 게임 속 집사와 도토리 그대로 (5px 칸)
+    //   한 판이 끝나면 표정만 보고도 누가 이겼는지 알 수 있게, 이긴 쪽은 ^▽^ 활짝, 진 쪽은 눈물 줄줄 (t = 눈물)
+    // ---------------------------------------------------------
+    const BUTLER_COLORS = { K: "#4A2F27", H: "#6b3f1d", h: "#8a5530", F: "#f9dcc0", E: "#2b1a14", w: "#ffffff", P: "#f4a6b8",
+                            m: "#d9846f", R: "#e0566e", C: "#cdb8f0", z: "#fffaf0", D: "#5a8a1e", t: "#7ec8f0",
+                            f: "#f9dcc0" };   // f = 깁스하는 손 (평소엔 피부색, 깁스면 붕대)
+    const CAT_COLORS = { K: "#4A2F27", B: "#e3a868", T: "#c8834a", L: "#fff3e0", P: "#f4a6b8", E: "#2b1a14", w: "#ffffff",
+                         A: "#7a4a24", a: "#b07a3f", R: "#e0566e", t: "#7ec8f0",
+                         f: "#e3a868" };   // f = 깁스하는 앞발 (평소엔 털색, 깁스면 붕대)
+    const BUTLER_TOP = ["...KKKKKK...", "..KHHHHHHK..", ".KHHhHHHHHK.", ".KHHHHHHHHK."];
+    const BUTLER_BOTTOM = ["..KCCCCCCK..", ".KCCCzzCCCK.", "KFKCCCCCCKfK", "..KCCCCCCK..", "..KDDDDDDK..", "..KDDKKDDK..", "..KKK..KKK.."];
+    const BUTLER_FACES = {   // 보통 / 신남(이겼을 때 : ^^ 눈 + 입 크게 벌리고 깔깔) / 엉엉(졌을 때 : 꼭 감은 눈 + 눈물 + 삐죽 입)
+      neutral: [".KHFFFFFFHK.", ".KFwFFFFwFK.", ".KFEFFFFEFK.", ".KPFFFFFFPK.", ".KFFFmmFFFK.", "..KFFFFFFK.."],
+      joy:     [".KHFFFFFFHK.", ".KFKFFFFKFK.", ".KKFKFFKFKK.", ".KPPKKKKPPK.", ".KFKRPPRKFK.", "..KFKKKKFK.."],
+      gloomy:  [".KHFFFFFFHK.", ".KFFFFFFFFK.", ".KKKFFFFKKK.", ".KtFFFFFFtK.", ".KtFFKKFFtK.", "..KtKFFKtK.."],
+    };
+    const butlerMap = face => [...BUTLER_TOP, ...BUTLER_FACES[face], ...BUTLER_BOTTOM];
+    const CAT_POSES = {      // 보통(꼬리 올림) / 으쓱(^^ 눈 + 입 벌리고 깔깔 : 도토리가 이겼을 때) / 엉엉(귀 납작 + 눈물 + 꼬리 내림 : 도토리가 졌을 때)
+      sit:   [".K...KK...K...", "KBK.KAAK.KBK..", "KBBKAaaAKBBK..", "KBBBTBBTBBBK..", "KBwBBBBBBwBKK.", "KBEBBBBBBEBKTK", "KPBBBPPBBBPKBK", "KBLLLLLLLLBKTK", "KBLLLLLLLLBKBK", ".KKKKKKKKKKKK."],
+      smug:  [".K...KK...K...", "KBK.KAAK.KBK..", "KBBKAaaAKBBK..", "KBBBTBBTBBBK..", "KBBKBBBBKBBKK.", "KBKBKBBKBKBKTK", "KPPBBPPBBPPKBK", "KBLLKRRKLLBKTK", "KBLLLKKLLLBKBK", ".KKKKKKKKKKKK."],
+      down:  ["......KK......", "KKK.KAAK.KKK..", "KBBKAaaAKBBK..", "KBBBTBBTBBBK..", "KBKKBBBBKKBK..", "KBtBBBBBBtBK..", "KPtBBPPBBtPK..", "KBtLLKKLLtBK..", "KBLLKLLKLLBKK.", ".KKKKKKKKKKKTK"],
+    };
+    // 마지막 판 클로즈업 : 비장한 얼굴 (V자 눈썹 + 가늘게 뜬 눈 + 꾹 다문 입) — 집사는 어깨까지만
+    const BUTLER_SERIOUS = [".KHFFFFFFHK.", ".KKKFFFFKKK.", ".KFFKFFKFFK.", ".KFEEFFEEFK.", ".KFFFFFFFFK.", "..KFKKKKFK.."];
+    const BUTLER_CLOSEUP = [...BUTLER_TOP, ...BUTLER_SERIOUS, ...BUTLER_BOTTOM.slice(0, 3)];
+    const CAT_CLOSEUP = [".K...KK...K.", "KBK.KAAK.KBK", "KBBKAaaAKBBK", "KKKBTBBTBKKK", "KBBKBBBBKBBK", "KBEEBBBBEEBK", "KPBBBPPBBBPK", "KBLLKKKKLLBK", "KBLLLLLLLLBK", ".KKKKKKKKKK."];
+    // ---------------------------------------------------------
+    // 이긴 쪽의 승리 액션 : 이길 때마다 랜덤으로 하나 (같은 액션은 연속으로 안 나와요)
+    //   집사 : 알통 자랑 / 나팔 불기 / 축배 들기 (팔을 펼칠 자리가 필요해서 가로 18칸)
+    //   도토리 : 하늘 날기 / 상자에 쏙 들어가 꼬리만 살랑살랑 / 꾹꾹이
+    //   Y 금색(나팔·맥주) / y 진한 금색 / z 거품
+    // ---------------------------------------------------------
+    Object.assign(BUTLER_COLORS, { Y: "#f2c14e", y: "#c8902a" });
+    Object.assign(CAT_COLORS, { X: "#d9a066", Y: "#8a5a2b" });   // 상자 : 골판지 / 상자 속 그늘
+    const BUTLER_LEGS = [".....KCCCCCCK.....", ".....KDDDDDDK.....", ".....KDDKKDDK.....", ".....KKK..KKK....."];
+    const BUTLER_ACTIONS = {
+      flex: [                // 알통 자랑 : 두 팔을 접어 올려 불끈!
+        "......KKKKKK......",
+        ".....KHHHHHHK.....",
+        "....KHHhHHHHHK....",
+        "....KHHHHHHHHK....",
+        "....KHFFFFFFHK....",
+        ".KK.KFKFFFFKFK.KK.",
+        "KFFKKKFKFFKFKKKffK",
+        "KFFKKPPKKKKPPKKffK",
+        "KFFKKFKRPPRKFKKffK",
+        "KFFK.KFKKKKFK.KffK",
+        "KFFFFKCCCCCCKFFFFK",
+        ".KKKKKCCzzCCKKKKK.",
+        ".....KCCCCCCK.....",
+        ...BUTLER_LEGS,
+      ],
+      trumpet: [             // 나팔 불기 : 볼 빵빵, 나팔은 도토리 쪽으로 빠라밤~
+        "......KKKKKK......",
+        ".....KHHHHHHK.....",
+        "....KHHhHHHHHK....",
+        "....KHHHHHHHHK....",
+        "....KHFFFFFFHK....",
+        "....KFKFFFFKFK..KK",
+        "....KKFKFFKFKK.KYK",
+        "....KPPPFFPPPKKKYK",
+        "....KFFFFKYYYYYYYK",
+        ".....KFFFFKKyKKKYK",
+        ".....KCCCCCKfK..KK",
+        "....KCCCzzCCCK....",
+        "...KFKCCCCCCK.....",
+        ...BUTLER_LEGS,
+      ],
+      toast: [               // 축배 들기 : 손잡이 달린 맥주잔을 번쩍! (잔이 커서 가로 20칸)
+        "......KKKKKK..KKKKK.",
+        ".....KHHHHHHK.KzzzK.",
+        "....KHHhHHHHHKKYYYKK",
+        "....KHHHHHHHHKKYYYKK",
+        "....KHFFFFFFHK.KKKKK",
+        "....KFKFFFFKFK..KfK.",
+        "....KKFKFFKFKK..KfK.",
+        "....KPPKKKKPPK..KfK.",
+        "....KFKRPPRKFK..KCK.",
+        ".....KFKKKKFK...KCK.",
+        ".....KCCCCCCCCCCCK..",
+        "....KCCCzzCCCK......",
+        "...KFKCCCCCCK.......",
+        ...BUTLER_LEGS.map(row => row + ".."),
+      ],
+    };
+    const CAT_ACTIONS = {
+      fly: [                 // 하늘 날기 : 날다람쥐처럼 쫙 펴고 (머리는 오른쪽 → 뒤집혀서 집사 쪽을 봐요)
+        "KK.....K...KK...K.",
+        "KTK...KBK.KAAK.KBK",
+        ".KTK..KBBKAaaAKBBK",
+        "..KTK.KBBBTBBTBBBK",
+        "...KKKKBBKBBBBKBBK",
+        "..KBBBKBKBKBBKBKBK",
+        "KKKBTBKPPBBPPBBPPK",
+        "KBBLLK.KBLKRRKLBK.",
+        "KKKKKKKKKKKKKKKK..",
+        "KBK.....KBK..KfK..",
+      ],
+      knead: [               // 꾹꾹이 : 눈을 ^^ 감고 앞발(CAT_PAW)로 번갈아 꾹, 꾹
+        ".K...KK...K...", "KBK.KAAK.KBK..", "KBBKAaaAKBBK..", "KBBBTBBTBBBK..", "KBBKBBBBKBBKK.",
+        "KBKBKBBKBKBKTK", "KPPBBPPBBPPKBK", "KBLLLKKLLLBKTK", "KBLLLLLLLLBKBK", ".KKKKKKKKKKKK.",
+      ],
+      box: [                 // 상자에 쏙 : 꼬리(CAT_TAIL)만 위로 내놓고 살랑살랑
+        "KKKKKKKKKKKKKK",
+        "KYYYYYYYYYYYYK",
+        "KXXXXXXXXXXXXK",
+        "KXXXXKKKKXXXXK",
+        "KXXXXXXXXXXXXK",
+        "KXXXXXXXXXXXXK",
+        "KKKKKKKKKKKKKK",
+      ],
+    };
+    const CAT_TAIL = [".K.", "KBK", "KTK", "KBK", "KTK", "KBK", "KTK"];
+    const CAT_PAW = [".KK.", "KBBK", "KLLK", ".KK."];   // 꾹꾹이 앞발 (4칸 x 4줄)
+
+    // =========================================================
+    // 깁스 규칙 : 3선승 매치에서 진 쪽은 다음 매치 동안 깁스!
+    //   깁스로 가위를 내면 CAST_SUCCESS 확률로만 손가락이 펴져요. 못 펴면 바위(주먹)가 돼요
+    //   매치가 끝나면 깁스는 풀리고, 이번에 진 쪽이 새로 깁스를 해요
+    // =========================================================
+    const CAST_SUCCESS = 0.5;                  // 깁스로 가위를 냈을 때 성공할 확률 (0.5 = 50%)
+    const cast = { me: false, com: false };    // 지금 깁스 중인지 : me 집사(나) / com 도토리
+    const BANDAGE = { f: "#ffffff", g: "#c9c2b8" };   // 붕대 : 흰 천 + 회색 감은 줄
+    const CAST_PAW = [".KK.", "KffK", "KggK", "KffK", ".KK."];   // 붕대 감은 앞발 (도토리 옆에 겹쳐 그려요)
+    // 색 고르기 : 깁스 중이면 f 칸을 붕대색으로 바꿔요
+    const colorsFor = (who, colors) => cast[who] ? { ...colors, ...BANDAGE } : colors;
+    // 이름표 글자 : 깁스 중이면 앞에 🩹
+    const tagName = who => (cast[who] ? "🩹 " : "") + (who === "me" ? "나" : catName);
+    // 손 이름 : 가위가 안 펴졌으면 "가위→바위"
+    const handLabel = (picked, played) => picked === played ? HANDS[played].name : `${HANDS[picked].name}→${HANDS[played].name}`;
+    // 깁스로 가위를 냈으면 주사위를 굴려요 : 실패하면 바위
+    const tryHand = (who, hand) => (cast[who] && hand === "scissors" && Math.random() >= CAST_SUCCESS) ? "rock" : hand;
+
+    // 깁스 상태를 화면에 : 이름표 🩹 / 위 안내 문구 / 가위 버튼 붕대 표시
+    function showCast() {
+      document.getElementById("tag-me").textContent = tagName("me");
+      document.getElementById("tag-cat").textContent = tagName("com");
+      const pct = Math.round(CAST_SUCCESS * 100);
+      document.getElementById("sub").textContent =
+        cast.me  ? `🩹 나는 깁스 중! 가위는 ${pct}%만 펴져요` :
+        cast.com ? `🩹 ${josa(catName, "은/는")} 깁스 중! 가위가 잘 안 펴져요` : "하나를 골라 주세요";
+      const scissorsBtn = document.querySelector('.hand[data-hand="scissors"]');
+      scissorsBtn.classList.toggle("casted", cast.me);
+      scissorsBtn.querySelector(".cast-badge").textContent = `🩹 ${pct}%`;
+      scissorsBtn.setAttribute("aria-label", cast.me ? `가위 (깁스 중 : ${pct}% 확률로만 펴지고, 아니면 바위가 돼요)` : "가위");
+    }
+
+    // 도트 그림을 HTML 로 : 칸 하나 = <i> 하나 (CSS 그리드)
+    function spriteHTML(map, colors, px, cls = "", id = "") {
+      const cells = map.join("").split("").map(ch => `<i style="background:${colors[ch] || "transparent"}"></i>`).join("");
+      return `<span class="px-hand ${cls}"${id ? ` id="${id}"` : ""} aria-hidden="true" style="grid-template-columns:repeat(${map[0].length},${px}px);grid-auto-rows:${px}px">${cells}</span>`;
+    }
+    // 손 : 손 이름, 칸 크기, class, id, 색 (도토리는 앞발 색)
+    const handHTML = (key, px, cls = "", id = "", colors = HAND_COLORS) => spriteHTML(HAND_SPRITES[key], colors, px, cls, id);
+
+    // 버튼 속 손 그리기 (6px 칸)
+    for (const el of document.querySelectorAll(".hand .px-hand")) el.outerHTML = handHTML(el.dataset.px, 6);
+
+    // 도토리 이름 : 게임(index-v3.html)에서 지은 이름을 그대로 써요 (없으면 "도토리")
+    let catName = "도토리";
+    try {
+      const saved = JSON.parse(localStorage.getItem("butler-game-save-v3"));
+      if (saved && typeof saved.catName === "string" && saved.catName.trim()) catName = saved.catName.trim().slice(0, 10);
+    } catch (e) {}
+    // 받침에 따라 "을/를" 처럼 알맞은 조사 붙이기
+    function josa(word, pair) {
+      const [withB, withoutB] = pair.split("/");
+      const code = word.charCodeAt(word.length - 1) - 0xac00;
+      return word + (code >= 0 && code <= 11171 && code % 28 ? withB : withoutB);
+    }
+
+    // 결과 문구
+    const VERDICTS = {
+      win:  "이겼다! 🎉",
+      lose: "졌다… 😭",
+      draw: "비겼다 🤝",
+    };
+
+    const resultEl = document.getElementById("result");
+
+    // 점수판 : 이기면 나 +1, 지면 도토리 +1 (비기면 그대로). 먼저 WIN_SCORE 점이면 최종 승리
+    const WIN_SCORE = 3;
+    const score = { me: 0, com: 0 };
+    const handButtons = document.querySelectorAll(".hand");
+    const finalEl = document.getElementById("final");
+    const finalWrap = document.getElementById("final-wrap");   // 팝업 바깥 막
+
+    // 색종이 펑! : origin 요소 가운데에서 count 장이 위로 튀었다가 흩날려 떨어져요
+    const CONFETTI_COLORS = ["#b5e061", "#e4f6bd", "#cdb8f0", "#6b4fa0", "#d9b48a", "#fffaf0"];   // 연두 · 연보라 · 갈색 · 크림
+    function confetti(count, origin) {
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;   // 움직임 줄이기면 생략
+      const box = origin.getBoundingClientRect();
+      const layer = document.createElement("div");
+      layer.className = "confetti";
+      for (let i = 0; i < count; i++) {
+        const p = document.createElement("i");
+        p.style.left = box.left + box.width / 2 + "px";
+        p.style.top = box.top + box.height / 2 + "px";
+        p.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+        p.style.setProperty("--dx", (Math.random() - 0.5) * 420 + "px");      // 좌우로 퍼지는 정도
+        p.style.setProperty("--up", -(80 + Math.random() * 220) + "px");      // 위로 튀는 높이
+        p.style.setProperty("--rot", (Math.random() - 0.5) * 1080 + "deg");   // 빙글빙글
+        p.style.setProperty("--dur", 1.4 + Math.random() * 1.2 + "s");
+        layer.appendChild(p);
+      }
+      document.body.appendChild(layer);
+      setTimeout(() => layer.remove(), 3000);   // 다 떨어지면 치우기
+    }
+
+    function showScore() {
+      document.getElementById("score-me").textContent = score.me;
+      document.getElementById("score-com").textContent = score.com;
+    }
+
+    // 누가 3점을 냈으면 : 큰 메시지 + 다시 하기, 버튼은 잠깐 멈춰요
+    function checkFinal() {
+      if (score.me < WIN_SCORE && score.com < WIN_SCORE) return;
+      const iWon = score.me >= WIN_SCORE;
+      finalEl.className = "final pop " + (iWon ? "win" : "lose");
+      document.getElementById("final-msg").textContent = iWon ? "최종 승리! 🎉" : "😭 최종 패배…";
+      if (iWon) {   // 최종 승리는 색종이를 세 번 연달아 펑, 펑, 펑!
+        [0, 400, 800].forEach(t => setTimeout(() => confetti(70, finalEl), t));
+      }
+      document.getElementById("final-sub").textContent = iWon
+        ? `${score.me} : ${score.com}, ${josa(catName, "을/를")} 이겼어요!`
+        : `${score.me} : ${score.com}, 다음엔 꼭 이겨 봐요!`;
+      // 깁스 : 이번 매치의 깁스는 풀리고, 진 쪽이 다음 매치 동안 깁스
+      const loser = iWon ? "com" : "me";
+      const again = cast[loser];           // 깁스였던 쪽이 또 졌으면 : 깁스가 안 풀리고 "다음 매치도"
+      const lines = [];
+      if (cast.me && !again) lines.push("🩹 내 깁스가 풀렸다!");
+      if (cast.com && !again) lines.push(`🩹 ${catName}의 깁스가 풀렸다!`);
+      const also = again ? "도" : "는";
+      lines.push(iWon ? `다음 매치${also} ${josa(catName, "이/가")} 깁스! 🩹` : `다음 매치${also} 내가 깁스… 🩹`);
+      cast.me = loser === "me";
+      cast.com = loser === "com";
+      document.getElementById("final-cast").textContent = lines.join(" ");
+      showCast();
+      finalWrap.hidden = false;
+      handButtons.forEach(b => { b.disabled = true; });
+      document.getElementById("again").focus();
+    }
+
+    // 다시 하기 : 0 : 0 부터 새로
+    document.getElementById("again").addEventListener("click", () => {
+      score.me = 0;
+      score.com = 0;
+      showScore();
+      setRing("neutral", "sit", "하나를 골라 봐!");
+      showCast();
+      finalWrap.hidden = true;
+      document.body.classList.remove("gray");   // 색깔 돌려놓기
+      handButtons.forEach(b => { b.disabled = false; });
+      handButtons[0].focus();
+    });
+
+    // 도토리(컴퓨터 역할)가 셋 중 하나를 무작위로 골라요
+    //   집사가 깁스 중이면 : 집사 가위가 주먹이 되기 쉬우니까 보를 더 자주 (보 40% / 바위 30% / 가위 30%)
+    function computerPick() {
+      if (cast.me) {
+        const r = Math.random();
+        return r < 0.4 ? "paper" : r < 0.7 ? "rock" : "scissors";
+      }
+      const keys = Object.keys(HANDS);
+      return keys[Math.floor(Math.random() * keys.length)];
+    }
+
+    // 내 것과 도토리 것을 비교 : win 이김 / lose 짐 / draw 비김
+    function judge(me, com) {
+      if (me === com) return "draw";
+      return HANDS[me].beats === com ? "win" : "lose";
+    }
+
+    // =========================================================
+    // 16비트 음악 : 파일 없이 브라우저가 직접 소리를 만들어요 (Web Audio)
+    //   네모파(square) = 멜로디, 세모파(triangle) = 베이스, 지지직(노이즈)·낮은 사인파 = 북
+    // =========================================================
+    const BEAT = 0.4;      // 한 박자 길이(초) : 150 BPM, 신나게
+    const LEAD = 0.15;     // 버튼을 누르고 첫 박자까지 살짝 쉬는 시간(초)
+    let audio = null;      // 소리 만드는 장치 (처음 누를 때 만들어요 : 브라우저 규칙)
+    let muted = false;
+    try { muted = localStorage.getItem("rps-muted") === "1"; } catch (e) {}
+
+    function getAudio() {
+      if (muted) return null;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;               // 소리를 못 내는 브라우저면 그냥 조용히
+      if (!audio) audio = new AC();
+      if (audio.state === "suspended") audio.resume();
+      return audio;
+    }
+
+    // 음 이름 → 주파수 : "C5" = 도(5옥타브), "G#4" = 솔#(4옥타브)
+    const NOTE_INDEX = { C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5, "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11 };
+    function freq(note) {
+      const [, name, oct] = note.match(/^([A-G]#?)(\d)$/);
+      return 440 * Math.pow(2, (NOTE_INDEX[name] + (Number(oct) + 1) * 12 - 69) / 12);
+    }
+
+    // 음 하나 : 파형, 음 이름, 시작 시각, 길이, 크기. 끝을 살짝 줄여서 "뚝" 소리가 안 나게
+    function tone(ctx, type, note, start, dur, vol = 0.12) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq(note);
+      gain.gain.setValueAtTime(vol, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + dur + 0.02);
+    }
+
+    // 북 소리들 : 지지직(노이즈)을 짧게 잘라서 만들어요
+    function noise(ctx, start, len, vol, highpass = 0) {
+      const n = Math.floor(ctx.sampleRate * len);
+      const buffer = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      src.buffer = buffer;
+      gain.gain.value = vol;
+      let out = src;
+      if (highpass) {                       // 높은 소리만 남기면 "칙" (하이햇)
+        const f = ctx.createBiquadFilter();
+        f.type = "highpass";
+        f.frequency.value = highpass;
+        out = src.connect(f);
+      }
+      out.connect(gain).connect(ctx.destination);
+      src.start(start);
+    }
+    // 큰북 "쿵" : 낮은 음이 뚝 떨어져요
+    function kick(ctx, start, vol = 0.5) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(150, start);
+      osc.frequency.exponentialRampToValueAtTime(45, start + 0.12);
+      gain.gain.setValueAtTime(vol, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.15);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.17);
+    }
+    const snare = (ctx, start) => noise(ctx, start, 0.12, 0.22, 1200);   // 작은북 "착"
+    const hat   = (ctx, start) => noise(ctx, start, 0.03, 0.06, 6000);   // 하이햇 "칙"
+    const crash = (ctx, start) => noise(ctx, start, 0.6, 0.18, 3000);    // 심벌 "쨍"
+
+    // ---------------------------------------------------------
+    // 가위바위보 노래 : "안 내면 진다 (쉬고) / 가위! 바위! 보!"
+    //   박자표(박자 단위). 7번째 박자(6)의 "보!"에서 손을 펼쳐요 (진짜 가위바위보처럼)
+    //   멜로디는 말하는 높낮이를 따라가요 : 안·내 높게 → 면 낮게 / 진 높게 → 다 낮게 / 가위·바위·보는 점점 올라가요
+    // ---------------------------------------------------------
+    const CHANT_MELODY = [
+      // [음, 시작 박자, 길이(박자)]
+      ["G5", 0, 0.5], ["G5", 0.5, 0.5], ["E5", 1, 1],       // 안 내 면
+      ["G5", 2, 0.5], ["E5", 2.5, 0.5],                     // 진 다
+      ["G5", 4, 0.5], ["G5", 4.5, 0.5],                     // 가 위
+      ["A5", 5, 0.5], ["A5", 5.5, 0.5],                     // 바 위
+      ["C6", 6, 0.9],                                       // 보!
+    ];
+    const CHANT_BASS = [["C3", 0, 1], ["C3", 1, 1], ["A2", 2, 1], ["G2", 3, 1], ["F3", 4, 1], ["G3", 5, 1], ["C3", 6, 1.2]];
+    const REVEAL_BEAT = 6;   // "보!" 박자
+
+    function playChant() {
+      const ctx = getAudio();
+      if (!ctx) return;
+      const t = ctx.currentTime + LEAD;
+      const at = b => t + b * BEAT;
+      for (const [n, b, len] of CHANT_MELODY) tone(ctx, "square", n, at(b), len * BEAT * 0.85, 0.09);
+      for (const [n, b, len] of CHANT_BASS) tone(ctx, "triangle", n, at(b), len * BEAT * 0.9, 0.25);
+      // 북 : 앞 마디는 쿵-착-쿵-착, 뒷 마디는 가위·바위에 쿵쿵 (손이 내려오는 박자)
+      [0, 2, 4, 5].forEach(b => kick(ctx, at(b)));
+      [1, 3].forEach(b => snare(ctx, at(b)));
+      for (let b = 0; b < REVEAL_BEAT; b += 0.5) hat(ctx, at(b));
+      // 보! : 화음 + 쿵 + 쨍
+      ["C5", "E5", "G5"].forEach(n => tone(ctx, "square", n, at(REVEAL_BEAT), 0.9 * BEAT, 0.04));
+      kick(ctx, at(REVEAL_BEAT), 0.6);
+      crash(ctx, at(REVEAL_BEAT));
+    }
+
+    // ---------------------------------------------------------
+    // 마지막 판 편곡 : 같은 노래를 느리고 웅장하게 (오케스트라 흉내)
+    //   단조(어두운 화음)로 긴장감 → "보!"에서 밝은 장조 화음으로 쾅!
+    //   현악기 = 톱니파 여러 개를 살짝 어긋나게 겹쳐서 부드럽게 / 금관 = 톱니파가 점점 밝아지게 / 팀파니 = 낮은 북
+    //   울림(리버브) : 큰 공연장처럼 소리가 길게 퍼져요
+    // ---------------------------------------------------------
+    const FINAL_BEAT = 0.6;    // 마지막 판은 한 박자를 길게 (100 BPM)
+    const FINAL_INTRO = 2;     // 노래 앞에 "운명의 한 판!" 2박자 (팀파니 두두두두)
+    let orchOut = null;        // 오케스트라 소리가 모이는 곳 (바로 + 울림)
+
+    function getOrchOut(ctx) {
+      if (orchOut) return orchOut;
+      const bus = ctx.createGain();
+      const comp = ctx.createDynamicsCompressor();   // 너무 커서 찢어지지 않게
+      // 울림 : 점점 작아지는 지지직을 "공간의 메아리"로 써요
+      const len = ctx.sampleRate * 2.8;
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      }
+      const verb = ctx.createConvolver();
+      verb.buffer = ir;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.45;
+      bus.connect(comp);
+      bus.connect(verb).connect(wet).connect(comp);
+      comp.connect(ctx.destination);
+      orchOut = bus;
+      return bus;
+    }
+
+    // 악기 소리 하나 : 천천히 커지고(attack) 부드럽게 사라져요. 필터로 날카로운 소리를 깎아요
+    function orchTone(ctx, note, start, dur, { vol = 0.06, attack = 0.08, cutoff = 1800, voices = 3, brass = false } = {}) {
+      const out = getOrchOut(ctx);
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(brass ? 400 : cutoff, start);
+      if (brass) filter.frequency.linearRampToValueAtTime(cutoff, start + 0.15);   // 금관 : "빠-앙" 하고 밝아져요
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(vol, start + attack);
+      gain.gain.setValueAtTime(vol, start + Math.max(attack, dur - 0.15));
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur + 0.35);
+      filter.connect(gain).connect(out);
+      for (let v = 0; v < voices; v++) {        // 여러 명이 함께 연주하는 느낌 : 음을 아주 살짝씩 어긋나게
+        const osc = ctx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.value = freq(note);
+        osc.detune.value = (v - (voices - 1) / 2) * 9;
+        osc.connect(filter);
+        osc.start(start);
+        osc.stop(start + dur + 0.4);
+      }
+    }
+    // 팀파니 "둥" : 낮은 사인파가 살짝 내려가며 길게 울려요
+    function timpani(ctx, start, vol = 0.5, note = "C2") {
+      const out = getOrchOut(ctx);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq(note) * 1.4, start);
+      osc.frequency.exponentialRampToValueAtTime(freq(note), start + 0.08);
+      gain.gain.setValueAtTime(vol, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.9);
+      osc.connect(gain).connect(out);
+      osc.start(start);
+      osc.stop(start + 0.95);
+    }
+
+    const FINAL_MELODY = [   // 금관 : 원래 노래를 한 옥타브 낮게, 미(E) → 미♭(D#)으로 바꿔 단조로
+      ["G4", 0, 0.5], ["G4", 0.5, 0.5], ["D#4", 1, 1],
+      ["G4", 2, 0.5], ["D#4", 2.5, 0.5],
+      ["G4", 4, 0.5], ["G4", 4.5, 0.5],
+      ["G#4", 5, 0.5], ["G#4", 5.5, 0.5],
+      ["C5", 6, 2],
+    ];
+    const FINAL_CHORDS = [   // 현악 화음 : [음들, 시작 박자, 길이] — 도단조 → 라♭ → 솔 → 라♭ → 시♭ → 도장조!
+      [["C4", "D#4", "G4"], 0, 2],
+      [["G#3", "C4", "D#4"], 2, 1],
+      [["G3", "B3", "D4"], 3, 1],
+      [["G#3", "C4", "D#4"], 4, 1],
+      [["A#3", "D4", "F4"], 5, 1],
+      [["C4", "E4", "G4", "C5"], 6, 2.5],
+    ];
+    const FINAL_BASS = [["C2", 0, 2], ["G#1", 2, 1], ["G1", 3, 1], ["G#1", 4, 1], ["A#1", 5, 1], ["C2", 6, 2.5]];
+
+    function playFinalChant() {
+      const ctx = getAudio();
+      if (!ctx) return;
+      const t = ctx.currentTime + LEAD + FINAL_INTRO * FINAL_BEAT;   // 노래 0박자 = 소개가 끝난 뒤
+      const at = b => t + b * FINAL_BEAT;
+      // 소개 : 낮은 현악이 깔리고 팀파니가 점점 크게 두두두두
+      orchTone(ctx, "C2", at(-FINAL_INTRO), FINAL_INTRO * FINAL_BEAT, { vol: 0.07, attack: 0.5, cutoff: 700 });
+      orchTone(ctx, "G2", at(-FINAL_INTRO), FINAL_INTRO * FINAL_BEAT, { vol: 0.05, attack: 0.5, cutoff: 700 });
+      for (let b = -FINAL_INTRO; b < 0; b += 0.125) timpani(ctx, at(b), 0.12 + 0.3 * (b + FINAL_INTRO) / FINAL_INTRO);
+      // 노래
+      for (const [n, b, len] of FINAL_MELODY) {
+        orchTone(ctx, n, at(b), len * FINAL_BEAT * 0.9, { vol: 0.07, attack: 0.03, cutoff: 2600, voices: 2, brass: true });
+        orchTone(ctx, n.replace(/\d/, d => Number(d) + 1), at(b), len * FINAL_BEAT * 0.9, { vol: 0.03, attack: 0.05, cutoff: 3200 });   // 바이올린이 한 옥타브 위에서 같이
+      }
+      for (const [notes, b, len] of FINAL_CHORDS) for (const n of notes) orchTone(ctx, n, at(b), len * FINAL_BEAT, { vol: 0.028, attack: 0.12, cutoff: 1500 });
+      for (const [n, b, len] of FINAL_BASS) orchTone(ctx, n, at(b), len * FINAL_BEAT, { vol: 0.09, attack: 0.06, cutoff: 600 });
+      // 팀파니 : 앞 마디는 둥-둥, 쉬는 박자에서 두두두두 몰아치고, 가위·바위에 둥! 둥!
+      [0, 2].forEach(b => timpani(ctx, at(b), 0.5));
+      for (let b = 3; b < 4; b += 0.125) timpani(ctx, at(b), 0.15 + 0.35 * (b - 3), "G1");
+      [4, 5].forEach(b => timpani(ctx, at(b), 0.6, b === 4 ? "G#1" : "A#1"));
+      // 보! : 팀파니 + 심벌 쨍
+      timpani(ctx, at(REVEAL_BEAT), 0.8);
+      noise(ctx, at(REVEAL_BEAT), 1.6, 0.16, 2500);
+    }
+
+    // 손이 안 펴졌을 때 : "뿌잉~" 하고 김빠지는 소리
+    function playFumble() {
+      const ctx = getAudio();
+      if (!ctx) return;
+      const t = ctx.currentTime + 0.02;
+      [["A4", 0], ["E4", 0.1], ["C4", 0.2]].forEach(([n, at]) => tone(ctx, "square", n, t + at, 0.12, 0.06));
+    }
+
+    // 결과 소리 : 이기면 신나게 올라가고, 지면 축 처지고, 비기면 갸웃
+    function playResult(outcome) {
+      const ctx = getAudio();
+      if (!ctx) return;
+      const t = ctx.currentTime + 0.05;
+      const tunes = {
+        win:  [["C5", 0], ["E5", 0.09], ["G5", 0.18], ["C6", 0.27], ["G5", 0.4], ["C6", 0.49]],
+        lose: [["G4", 0], ["F#4", 0.22], ["F4", 0.44], ["E4", 0.66]],
+        draw: [["G4", 0], ["G4", 0.18]],
+      };
+      for (const [n, at] of tunes[outcome]) tone(ctx, outcome === "lose" ? "triangle" : "square", n, t + at, outcome === "lose" ? 0.24 : 0.14, outcome === "lose" ? 0.2 : 0.08);
+    }
+
+    // 소리 켜기/끄기 버튼
+    const soundBtn = document.getElementById("sound");
+    function showSound() {
+      soundBtn.textContent = muted ? "🔇" : "🔊";
+      soundBtn.setAttribute("aria-pressed", String(!muted));
+      soundBtn.setAttribute("aria-label", muted ? "소리 켜기" : "소리 끄기");
+    }
+    soundBtn.addEventListener("click", () => {
+      muted = !muted;
+      try { localStorage.setItem("rps-muted", muted ? "1" : "0"); } catch (e) {}
+      showSound();
+    });
+    showSound();
+
+    // 처음 화면 : 링에 두 선수를 세우고, 점수판·이름표에 도토리 이름
+    setRing("neutral", "sit", "하나를 골라 봐!");
+    document.getElementById("cat-label").textContent = catName;
+    showCast();
+
+    // =========================================================
+    // 한 판 : 버튼을 누르면 바로 결과가 나오지 않고, 음악에 맞춰 "안 내면 진다, 가위! 바위! 보!"
+    // =========================================================
+    let playing = false;   // 노래하는 동안은 다른 버튼을 못 눌러요
+
+    // 노래에 맞춘 손 움직임 : 박자, 가운데 글자, 크게 흔들지(big) 여부
+    //   "안 내면 진다"는 작게 콩콩, "가위! 바위!"는 크게 쿵쿵, "보!"(REVEAL_BEAT)에서 손을 펼쳐요
+    const CHANT_STEPS = [
+      { beat: 0, text: "안 내면" },
+      { beat: 1 },
+      { beat: 2, text: "진다!" },
+      { beat: 4, text: "가위!", big: true },
+      { beat: 5, text: "바위!", big: true },
+    ];
+
+    // 승리 액션 고르기 : 지난번과 다른 것 중에서 랜덤 (같은 액션이 연속으로 나오지 않게)
+    const lastAction = { me: "", cat: "" };
+    function pickAction(who, actions) {
+      const choices = Object.keys(actions).filter(k => k !== lastAction[who]);
+      lastAction[who] = choices[Math.floor(Math.random() * choices.length)];
+      return lastAction[who];
+    }
+
+    // 링 그리기 : 집사 표정, 도토리 자세, 알림판 글자와 색 (손은 링에 그리지 않아요)
+    //   승부가 나면 이긴 쪽은 승리 액션(랜덤), 진 쪽은 털썩(sulk)
+    function setRing(face, pose, call, outcome = "") {
+      const meEl = document.getElementById("char-me");
+      const catEl = document.getElementById("char-cat");
+      const meColors = colorsFor("me", BUTLER_COLORS);    // 깁스 중이면 손이 붕대색
+      const catColors = colorsFor("com", CAT_COLORS);
+      const bandagedPaw = cast.com ? spriteHTML(CAST_PAW, { ...CAT_COLORS, ...BANDAGE }, 5, "cast-paw") : "";
+      if (outcome === "win") {             // 집사 승리 : 알통 / 나팔 / 축배
+        const act = pickAction("me", BUTLER_ACTIONS);
+        meEl.innerHTML = spriteHTML(BUTLER_ACTIONS[act], meColors, 5, "act-" + act, "body-me")
+          + (act === "trumpet" ? '<span class="notes" aria-hidden="true">♪♫</span>' : "");
+      } else {
+        meEl.innerHTML = spriteHTML(butlerMap(face), meColors, 5, outcome === "lose" ? "sulk" : "", "body-me");
+      }
+      if (outcome === "lose") {            // 도토리 승리 : 하늘 날기 / 상자 속 꼬리 살랑 / 꾹꾹이
+        const act = pickAction("cat", CAT_ACTIONS);
+        catEl.innerHTML = spriteHTML(CAT_ACTIONS[act], catColors, 5, "act-" + act, "body-cat")
+          + (act === "box" ? spriteHTML(CAT_TAIL, CAT_COLORS, 5, "tail") : "")
+          + (act === "knead" ? spriteHTML(CAT_PAW, CAT_COLORS, 5, "paw l")
+              + spriteHTML(cast.com ? CAST_PAW : CAT_PAW, catColors, 5, "paw r") : "");   // 깁스면 한쪽 앞발은 붕대
+      } else {
+        catEl.innerHTML = spriteHTML(CAT_POSES[pose], CAT_COLORS, 5, outcome === "win" ? "sulk" : "", "body-cat") + bandagedPaw;
+      }
+      const callEl = document.getElementById("call");
+      callEl.textContent = call;
+      callEl.className = "call " + outcome;
+    }
+
+    // 박자 콩! : 두 선수가 함께 뛰어요. 애니메이션을 처음부터 다시 시작하게 class 를 뺐다가 다시 넣어요
+    function pumpBodies(step) {
+      if (step.text) document.getElementById("call").textContent = step.text;
+      for (const el of [document.getElementById("body-me"), document.getElementById("body-cat")]) {
+        el.classList.remove("pump", "pump-s");
+        void el.offsetWidth;
+        el.classList.add(step.big ? "pump" : "pump-s");
+      }
+    }
+
+    function play(me) {
+      if (playing) return;
+      playing = true;
+      const com = computerPick();
+      // 고른 손(picked)과 실제로 나간 손(played) : 깁스면 가위가 주먹이 될 수도 있어요 ("보!"에서 공개)
+      const hands = { me, com, meOut: tryHand("me", me), comOut: tryHand("com", com) };
+      document.body.classList.remove("gray");   // 새 판 시작 : 색깔 돌려놓기
+      handButtons.forEach(b => { b.disabled = true; b.classList.toggle("picked", b.dataset.hand === me); });
+
+      setRing("neutral", "sit", "준비…");
+      showCast();
+
+      // 누구든 한 점만 더 내면 끝나는 판 = 마지막 판 : 느리고 웅장한 음악 + 클로즈업 연출
+      const final = Math.max(score.me, score.com) === WIN_SCORE - 1;
+      const beat = final ? FINAL_BEAT : BEAT;
+      const start = final ? LEAD + FINAL_INTRO * FINAL_BEAT : LEAD;   // 노래 0박자가 시작되는 시각(초)
+      resultEl.style.setProperty("--beat", beat + "s");
+      if (final) {
+        playFinalChant();
+        resultEl.classList.add("cinema");
+        showCutin("title", "운명의 한 판!");
+        for (const step of CHANT_STEPS) setTimeout(() => finalCut(step), (start + step.beat * beat) * 1000);
+      } else {
+        playChant();
+        for (const step of CHANT_STEPS) setTimeout(() => pumpBodies(step), (start + step.beat * beat) * 1000);
+      }
+      setTimeout(() => reveal(hands), (start + REVEAL_BEAT * beat) * 1000);
+    }
+
+    // 클로즈업 컷 보여주기 : who = "me"(집사) / "cat"(도토리) / "title"(글자만)
+    function showCutin(who, text) {
+      const cut = document.getElementById("cutin");
+      cut.className = "cutin " + who;
+      cut.hidden = false;
+      document.getElementById("cutin-art").innerHTML =
+        who === "me"  ? spriteHTML(BUTLER_CLOSEUP, colorsFor("me", BUTLER_COLORS), 11) :
+        who === "cat" ? spriteHTML(CAT_CLOSEUP, CAT_COLORS, 11) + (cast.com ? spriteHTML(CAST_PAW, { ...CAT_COLORS, ...BANDAGE }, 11, "cast-paw") : "") : "";
+      const line = document.getElementById("cutin-line");
+      line.textContent = text;
+      line.style.animation = "none";   // 글자 "톡" 애니메이션을 처음부터 다시
+      void line.offsetWidth;
+      line.style.animation = "";
+    }
+    // 마지막 판 박자마다 : 집사 → 도토리 → 집사 → 도토리 번갈아 클로즈업 (글자 없는 박자는 그대로 둬요)
+    const FINAL_CUTS = { 0: "me", 2: "cat", 4: "me", 5: "cat" };
+    function finalCut(step) {
+      if (step.text) document.getElementById("call").textContent = step.text;
+      if (FINAL_CUTS[step.beat]) showCutin(FINAL_CUTS[step.beat], step.text);
+    }
+    // 연출 끝 : "보!"에서 번쩍! 하고 링으로 돌아와요
+    function endCinema() {
+      if (!resultEl.classList.contains("cinema")) return;
+      resultEl.classList.remove("cinema");
+      document.getElementById("cutin").hidden = true;
+      const flash = document.getElementById("flash");
+      flash.classList.remove("on");
+      void flash.offsetWidth;
+      flash.classList.add("on");
+    }
+
+    // "보!" 박자 : 낸 손은 이름표에 쓰고, 표정으로 승패를 보여주고, 점수를 매겨요
+    //   깁스 가위가 안 펴졌으면 : 먼저 "손이 안 펴졌다!" + 부들부들, 잠깐 뒤에 승패
+    function reveal(hands) {
+      endCinema();   // 마지막 판이었으면 번쩍! 하고 링으로
+      const meFail = hands.me !== hands.meOut;
+      const comFail = hands.com !== hands.comOut;
+      if (!meFail && !comFail) return settle(hands);
+      setRing("neutral", "sit", meFail && comFail ? "🩹 둘 다 손이 안 펴졌다!" : "🩹 손이 안 펴졌다!");
+      showHandTags(hands);
+      if (meFail) document.getElementById("body-me").classList.add("fumble");
+      if (comFail) document.getElementById("body-cat").classList.add("fumble");
+      playFumble();
+      setTimeout(() => settle(hands), FUMBLE_DELAY);
+    }
+    const FUMBLE_DELAY = 800;   // "손이 안 펴졌다!"를 보여주는 시간(밀리초)
+
+    // 이름표 : 낸 손 (안 펴졌으면 "가위→바위")
+    function showHandTags(hands) {
+      document.getElementById("tag-me").textContent = tagName("me") + " · " + handLabel(hands.me, hands.meOut);
+      document.getElementById("tag-cat").textContent = tagName("com") + " · " + handLabel(hands.com, hands.comOut);
+    }
+
+    // 승패 매기기 : 실제로 나간 손끼리 비교해요
+    function settle(hands) {
+      const outcome = judge(hands.meOut, hands.comOut);
+      // 이긴 쪽은 활짝 웃으며 방방, 진 쪽은 엉엉 울며 털썩
+      setRing(
+        outcome === "win" ? "joy" : outcome === "lose" ? "gloomy" : "neutral",
+        outcome === "win" ? "down" : outcome === "lose" ? "smug" : "sit",
+        VERDICTS[outcome], outcome);
+      showHandTags(hands);
+
+      if (outcome === "win") score.me++;
+      if (outcome === "lose") score.com++;
+
+      // 이기면 색종이 펑! / 지면 화면이 흑백으로 (다음 판을 하면 색이 돌아와요)
+      document.body.classList.toggle("gray", outcome === "lose");
+      if (outcome === "win") confetti(45, resultEl);
+      playResult(outcome);
+      showScore();
+
+      // 최종 승부가 났으면 : 링 위에서 승리를 만끽하는 모습을 잠깐 보여준 뒤에 팝업 (그동안 버튼은 쉬어요)
+      if (score.me >= WIN_SCORE || score.com >= WIN_SCORE) {
+        setTimeout(() => {
+          playing = false;
+          handButtons.forEach(b => b.classList.remove("picked"));
+          checkFinal();
+        }, FINAL_POPUP_DELAY);
+        return;
+      }
+      // 다음 판 준비 : 버튼을 다시 켜요
+      playing = false;
+      handButtons.forEach(b => { b.disabled = false; b.classList.remove("picked"); });
+    }
+    const FINAL_POPUP_DELAY = 1800;   // 최종 결과 팝업이 뜨기까지 기다리는 시간(밀리초) : 1.8초
+
+    for (const btn of handButtons) {
+      btn.addEventListener("click", () => play(btn.dataset.hand));
+    }
+  </script>
+</body>
+</html>
