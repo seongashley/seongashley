@@ -1,0 +1,2775 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>벽돌깨기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0b0b1a;
+      font-family: "Press Start 2P", monospace;
+    }
+    /* 오락기 화면 테두리 */
+    .cabinet {
+      padding: 14px;
+      background: #1c1c3a;
+      border: 4px solid #ff2e88;
+      outline: 4px solid #2a2a55;
+      box-shadow: 8px 8px 0 #000;
+      position: relative;
+      z-index: 1; /* 고양이 몸(cat-back)보다 앞, 고양이 앞발(cat-front)보다 뒤 */
+    }
+    /* 거대 고양이를 그리는 그림판 : 페이지 전체를 덮고, 마우스 클릭은 그대로 통과해요 */
+    .cat-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+    #cat-back { z-index: 0; }
+    #cat-front { z-index: 2; }
+    #game {
+      display: block;
+      width: min(480px, calc(100vw - 64px));
+      height: auto;
+      background: #000;
+      image-rendering: pixelated;
+    }
+    .screen { position: relative; }
+    /* 끝 화면 : 캔버스 위에 어두운 막 + 브라운관 가로 줄무늬(스캔라인)를 깔고, 가운데에 오락기 같은 창을 띄워요 */
+    .gameover {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.35) 0 2px, transparent 2px 4px),
+        rgba(11, 11, 26, 0.7);
+      color: #fff;
+      text-align: center;
+    }
+    .gameover[hidden] { display: none; }
+    /* 창 : 오락기와 같은 분홍 테두리 + 남색 바깥선 + 검은 도트 그림자 */
+    .end-box {
+      width: 86%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 0 16px 22px;
+      background: #000;
+      border: 4px solid #ff2e88;
+      outline: 4px solid #2a2a55;
+      box-shadow: 8px 8px 0 #000;
+      animation: end-pop 0.24s steps(3, end); /* 뚝뚝 끊기며 커져요 */
+    }
+    @keyframes end-pop {
+      from { transform: scale(0.4); }
+      to { transform: scale(1); }
+    }
+    /* 창 위쪽 벽돌 띠 : 게임 벽돌 4가지 색, 위·왼쪽은 밝고 아래·오른쪽은 어둡게 (게임 벽돌과 같은 모양) */
+    .end-bricks {
+      display: flex;
+      gap: 4px;
+      width: 100%;
+      margin-top: 12px;
+    }
+    .end-bricks i {
+      flex: 1;
+      height: 10px;
+      box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.45), inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+    }
+    .end-bricks i:nth-child(4n + 1) { background: #ff2e88; }
+    .end-bricks i:nth-child(4n + 2) { background: #ffb000; }
+    .end-bricks i:nth-child(4n + 3) { background: #2ee86b; }
+    .end-bricks i:nth-child(4n + 4) { background: #2ec8ff; }
+    .end-score { display: flex; flex-direction: column; gap: 10px; }
+    .end-label { font-size: 12px; color: #ffb000; }
+    .end-number { font-size: 24px; letter-spacing: 2px; }
+    .end-number.counting { animation: blink 0.2s steps(2, start) infinite; } /* 올라가는 동안 깜빡 */
+    .end-hint { margin: 0; font-size: 10px; color: #ffb000; animation: blink 1s steps(2, start) infinite; }
+    @keyframes blink { to { visibility: hidden; } }
+    @media (prefers-reduced-motion: reduce) {
+      .end-box, .end-number.counting, .end-hint { animation: none; }
+    }
+    /* 광고 팝업 (벌칙) : 게임 화면 가운데에 뜨는 창. 지금은 테스트용 "광고 자리" */
+    .ad-popup {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 72%;
+      background: #f2f2f2;
+      color: #222;
+      border: 4px solid #000;
+      box-shadow: 6px 6px 0 #ff66cc;
+      text-align: center;
+    }
+    .ad-popup[hidden] { display: none; }
+    .ad-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 8px;
+      background: #ff66cc;
+      color: #fff;
+      font-size: 12px;
+    }
+    .ad-body {
+      padding: 48px 12px;
+      font-size: 18px;
+      line-height: 1.6;
+    }
+    .ad-timer { padding: 0 12px 14px; font-size: 12px; color: #555; }
+    /* 테스트 모드 버튼 판 (주소 끝에 ?test 를 붙이면 보여요) */
+    .test-panel {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 3;
+      width: 196px;
+      padding: 10px;
+      background: #1c1c3a;
+      border: 3px solid #ffe14d;
+      color: #fff;
+      font-size: 12px;
+    }
+    .test-panel[hidden] { display: none; }
+    /* 오른쪽 위 버튼들 : 테스트 모드 켜기/끄기, 소리 켜기/끄기 (M 키로도 돼요) */
+    .corner-btns {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 3;
+      display: flex;
+      flex-direction: column; /* 위아래로 쌓아서 오락기를 가리지 않게 */
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .sound-btn {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px 10px;
+      color: #000;
+      background: #e0e0ff;
+      border: 3px solid #ff2e88;
+      cursor: pointer;
+    }
+    .sound-btn:hover { background: #fff; }
+    .sound-btn[aria-pressed="false"] { background: #555577; color: #ccc; }
+    .sound-btn:focus-visible { outline: 2px solid #ffe14d; outline-offset: 2px; }
+    /* TEST 버튼 : 켜져 있으면 테스트 판 테두리와 같은 노란색 */
+    .test-btn[aria-pressed="false"] { background: #e0e0ff; color: #000; }
+    .test-btn[aria-pressed="true"] { background: #ffe14d; border-color: #ffe14d; }
+    .test-panel h2 { margin: 0 0 8px; font-size: 12px; color: #ffe14d; }
+    .test-panel .group { margin: 8px 0 4px; color: #aab; }
+    .test-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+    .test-panel button {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px;
+      color: #000;
+      background: #e0e0ff;
+      border: none;
+      cursor: pointer;
+    }
+    .test-panel button:hover { background: #fff; }
+    .test-panel button[aria-pressed="true"] { background: #2ee86b; }
+    .test-panel button:focus-visible { outline: 2px solid #ffe14d; outline-offset: 2px; }
+    .gameover h1 {
+      margin: 0;
+      font-size: min(26px, 5vw); /* 좁은 화면에서도 한 줄에 들어가게 */
+      font-weight: normal;
+      color: #ff2e88;
+      line-height: 1.4;
+      text-shadow: 3px 3px 0 #6a0f38;
+    }
+    .gameover.cleared h1 { color: #2ee86b; text-shadow: 3px 3px 0 #0f7a35; }
+    .gameover button {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 14px 20px;
+      color: #000;
+      background: #2ee86b;
+      border: none;
+      box-shadow: 4px 4px 0 #0f7a35;
+      cursor: pointer;
+    }
+    .gameover button:hover { background: #6dffa0; }
+    .gameover button:active { transform: translate(4px, 4px); box-shadow: none; }
+    .gameover button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <canvas class="cat-layer" id="cat-back"></canvas>
+  <canvas class="cat-layer" id="cat-front"></canvas>
+  <div class="corner-btns">
+    <button type="button" class="sound-btn test-btn" id="test-btn" aria-pressed="false" title="테스트 모드 켜기/끄기">🛠 TEST</button>
+    <button type="button" class="sound-btn" id="sound-btn" aria-pressed="true" title="소리 켜기/끄기 (M)">🔊 SOUND ON</button>
+  </div>
+  <div class="test-panel" id="test-panel" hidden>
+    <h2>TEST MODE</h2>
+    <div class="group">상</div>
+    <div class="buttons" data-group="good"></div>
+    <div class="group">벌</div>
+    <div class="buttons" data-group="bad"></div>
+    <div class="group">이벤트</div>
+    <div class="buttons" data-group="event"></div>
+    <div class="group">도구</div>
+    <div class="buttons">
+      <button type="button" id="test-refill">벽돌 채우기</button>
+      <button type="button" id="test-god" aria-pressed="false">무적</button>
+    </div>
+  </div>
+  <div class="cabinet">
+    <div class="screen">
+      <canvas id="game" width="480" height="560"></canvas>
+      <div class="gameover" id="gameover" hidden>
+        <div class="end-box">
+          <div class="end-bricks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h1 id="end-title">GAME OVER</h1>
+          <div class="end-score">
+            <span class="end-label">SCORE</span>
+            <span class="end-number" id="final-score">0000</span>
+          </div>
+          <button type="button" id="retry">▶ RETRY</button>
+          <p class="end-hint" aria-hidden="true">PRESS SPACE</p>
+        </div>
+      </div>
+      <div class="ad-popup" id="ad-popup" role="dialog" aria-label="광고" hidden>
+        <div class="ad-bar"><span>AD</span><span aria-hidden="true">✕</span></div>
+        <div class="ad-body">광고 자리</div>
+        <div class="ad-timer"><span id="ad-count">4</span>초 뒤에 닫혀요</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // 게임 상태
+    let score = 0;
+    let lives = 3;
+    let gameOver = false;
+
+    // 패들 (화면 아래쪽)
+    const paddle = { w: 80, h: 12, x: W / 2 - 40, y: H - 40 }; // w 는 아래 PADDLE_W 와 같게
+
+    // 공 (패들 바로 위)
+    // vx, vy = 1초에 움직이는 거리. launched = 발사했는지
+    const ball = { size: 10, x: W / 2 - 5, y: paddle.y - 14, vx: 0, vy: 0, launched: false };
+    const BALL_SPEED = 360;
+
+    // 벽돌 4줄 × 8개, 줄마다 색이 달라요
+    const ROWS = 4;
+    const COLS = 8;
+    const BRICK_W = 50;
+    const BRICK_H = 18;
+    const GAP = 6;
+    const TOP = 70; // 점수판 아래부터 벽돌 시작
+    const LEFT = (W - (COLS * BRICK_W + (COLS - 1) * GAP)) / 2;
+    const ROW_COLORS = ["#ff2e88", "#ffb000", "#2ee86b", "#2ec8ff"];
+    const ROW_POINTS = [40, 30, 20, 10]; // 위쪽 줄일수록 점수가 높아요
+
+    // alive = 아직 안 깨졌는지. 다시 하기를 누르면 처음부터 다시 만들어요
+    let bricks = [];
+    function makeBricks() {
+      bricks = [];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          bricks.push({
+            row: r,
+            col: c,
+            x: LEFT + c * (BRICK_W + GAP),
+            y: TOP + r * (BRICK_H + GAP),
+            color: ROW_COLORS[r],
+            points: ROW_POINTS[r],
+            alive: true,
+          });
+        }
+      }
+    }
+    makeBricks();
+
+    // ---------------------------------------------------------
+    // 도트 그림 (7칸 폭) : X 칸만 칠해요
+    const HEART = [
+      ".XX.XX.",
+      "XXXXXXX",
+      "XXXXXXX",
+      ".XXXXX.",
+      "..XXX..",
+      "...X...",
+    ];
+    const SKULL = [
+      ".XXXXX.",
+      "XXXXXXX",
+      "X..X..X",
+      "XXXXXXX",
+      ".XX.XX.",
+      ".X.X.X.",
+    ];
+    const QUESTION = [
+      "..XXX..",
+      ".X...X.",
+      "....X..",
+      "...X...",
+      ".......",
+      "...X...",
+    ];
+    const BOLT = [
+      "....XX.",
+      "...XX..",
+      "..XXXX.",
+      "....XX.",
+      "...XX..",
+      "..X....",
+    ];
+    const BIGBALL = [
+      "..XXX..",
+      ".XXXXX.",
+      "XXXXXXX",
+      "XXXXXXX",
+      ".XXXXX.",
+      "..XXX..",
+    ];
+    const WALL_HOLE = [
+      "XXXXXXX",
+      "XX...XX",
+      "X.....X",
+      "X.....X",
+      "XX...XX",
+      "XXXXXXX",
+    ];
+    const GUN = [
+      "...X...",
+      "..XXX..",
+      "..XXX..",
+      "..XXX..",
+      ".XXXXX.",
+      ".X...X.",
+    ];
+    const EYE = [
+      ".......",
+      "..XXX..",
+      ".X.X.X.",
+      "X.XXX.X",
+      ".X.X.X.",
+      "..XXX..",
+    ];
+    const AD_ICON = [
+      ".X..XX.",
+      "X.X.X.X",
+      "XXX.X.X",
+      "X.X.X.X",
+      "X.X.XX.",
+      ".......",
+    ];
+    const LOTUS = [
+      "...X...",
+      "..XXX..",
+      "X.XXX.X",
+      "XXXXXXX",
+      ".XXXXX.",
+      ".......",
+    ];
+    const CROSS = [
+      "...X...",
+      ".XXXXX.",
+      "...X...",
+      "...X...",
+      "...X...",
+      ".......",
+    ];
+    const CAT_ICON = [
+      "X.....X",
+      "XX...XX",
+      "XXXXXXX",
+      "X.XXX.X",
+      "XXXXXXX",
+      ".XXXXX.",
+    ];
+    const BOMB_ICON = [
+      ".....X.",
+      "....X..",
+      "..XXX..",
+      ".XXXXX.",
+      ".XXXXX.",
+      "..XXX..",
+    ];
+    const ADD_ROW = [
+      "XXX.XXX",
+      ".......",
+      "...X...",
+      ".X.X.X.",
+      "..XXX..",
+      "...X...",
+    ];
+    function drawPixelArt(art, x, y, px, color) {
+      ctx.fillStyle = color;
+      art.forEach((row, r) => {
+        [...row].forEach((ch, c) => {
+          if (ch === "X") ctx.fillRect(x + c * px, y + r * px, px, px);
+        });
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 특수 벽돌 : 게임 중에 계속, 바로 칠 수 있는 벽돌에 그림이 깜빡이며 나타나요. 떠 있는 동안 깨면 효과가 생겨요
+    //   상   heart  = 하트 (목숨 +1)          big    = 불덩어리 (공이 커지고 불이 붙어서, 벽돌을 뚫고 지나가며 주변까지 터뜨려요)
+    //        gun    = 총 (잠깐 동안 패들에서 총알을 쏴서 벽돌을 깨요. 스페이스)
+    //        buddha = 연꽃 (부처님이 나타나서 맨 앞줄 벽돌 한 줄이 사라져요)
+    //        jesus  = 십자가 (예수님이 나타나서, 공이 바닥에 빠져도 한 번 꺼내 줘요)
+    //        bomb   = 폭탄 (공이 폭탄이 되어 5초 카운트다운. 0일 때 공이 벽돌 근처면 모든 벽돌이 펑!, 멀면 작은 폭발)
+    //   벌   shrink = 해골 (패들이 아주 짧아져요)  speed  = 번개 (공이 갑자기 빨라져요)
+    //        hole   = 벽 구멍 (왼쪽이나 오른쪽 벽에 구멍이 나요. 공이 거기로 빠지면 목숨 -1)
+    //        ghost  = 눈 (공이 투명해져요. 패들 가까이 오면 서서히 보여요)
+    //        ad     = 광고 (광고 팝업이 4초 동안 떠요. 그동안 게임이 멈춰요)
+    //        addrow = 화살표 (벽돌이 모두 한 칸 내려오고, 맨 윗줄에 벽돌 한 줄이 새로 생겨요)
+    //   이벤트 tetris = 물음표 (20초 동안 테트리스)   cat = 고양이 (거대 고양이가 벽돌을 할퀴고 가요)
+    // 한 번 깨서 받은 상·벌은 그 판(목숨 3개)이 끝날 때까지 다시 나오지 않아요. 시간이 지나 사라진 것은 다시 나올 수 있어요
+    const SPECIAL_TYPES = {
+      heart:  { label: "BONUS!", art: HEART,    color: "#ff3355", sparkle: ["#fff", "#ffd6e7"] },
+      big:    { label: "BONUS!", art: BIGBALL,  color: "#ff5a1a", sparkle: ["#ffd23f", "#ff5a1a"] },
+      gun:    { label: "BONUS!", art: GUN,      color: "#b6ff3d", sparkle: ["#b6ff3d", "#eaffc2"] },
+      buddha: { label: "BONUS!", art: LOTUS,    color: "#ffb84d", sparkle: ["#ffd98a", "#fff3c4"] },
+      jesus:  { label: "BONUS!", art: CROSS,    color: "#fff3c4", sparkle: ["#fff3c4", "#ffd98a"] },
+      bomb:   { label: "BONUS!", art: BOMB_ICON, color: "#ff8a3d", sparkle: ["#ffd23f", "#ff8a3d"] },
+      shrink: { label: "DANGER", art: SKULL,    color: "#b04dff", sparkle: ["#b04dff", "#e0b8ff"] },
+      speed:  { label: "DANGER", art: BOLT,     color: "#3fd8ff", sparkle: ["#3fd8ff", "#bff3ff"] },
+      hole:   { label: "DANGER", art: WALL_HOLE, color: "#5a7dff", sparkle: ["#5a7dff", "#c8d4ff"] },
+      ghost:  { label: "DANGER", art: EYE,      color: "#9b9bb5", sparkle: ["#9b9bb5", "#e0e0f0"] },
+      ad:     { label: "DANGER", art: AD_ICON,  color: "#ff66cc", sparkle: ["#ff66cc", "#ffd1ef"] },
+      addrow: { label: "DANGER", art: ADD_ROW,  color: "#a0a0c0", sparkle: ["#a0a0c0", "#e0e0f0"] },
+      tetris: { label: "???",    art: QUESTION, color: "#ffe14d", sparkle: ["#ffe14d", "#fff6b0"] },
+      cat:    { label: "???",    art: CAT_ICON, color: "#d9a066", sparkle: ["#ffd9a8", "#fff1dc"] },
+    };
+    const SPECIAL_TIME = 6;  // 그림이 떠 있는 시간 (초)
+    const MAX_SPECIALS = 2;  // 한꺼번에 떠 있을 수 있는 수
+    const FIRST_DELAY = 2;   // 판이 시작되고 첫 특수 벽돌이 나올 때까지 (초)
+    const SPAWN_GAP = [2, 4]; // 다음 특수 벽돌이 나올 때까지 (초, 이 사이에서 무작위)
+
+    let activeSpecials = [];     // 지금 깜빡이는 것들 { type, brick, time }
+    let usedTypes = new Set();   // 이번 판에 이미 받은 상·벌
+    let spawnTimer = FIRST_DELAY;
+
+    function resetSpecials() {
+      activeSpecials = [];
+      usedTypes = new Set();
+      spawnTimer = FIRST_DELAY;
+    }
+
+    // 바로 칠 수 있는 벽돌 = 같은 세로줄에서 그 아래에 남은 벽돌이 없는 것 (공이 아래에서 바로 닿아요)
+    function exposedBricks() {
+      return bricks.filter((b) => b.alive &&
+        !bricks.some((o) => o.alive && o.x === b.x && o.y > b.y));
+    }
+
+    function spawnSpecial() {
+      const showing = activeSpecials.map((s) => s.type);
+      const types = Object.keys(SPECIAL_TYPES).filter((t) => !usedTypes.has(t) && !showing.includes(t));
+      const taken = activeSpecials.map((s) => s.brick);
+      const choices = exposedBricks().filter((b) => !taken.includes(b));
+      if (!types.length || !choices.length) return;
+      const s = {
+        type: types[Math.floor(Math.random() * types.length)],
+        brick: choices[Math.floor(Math.random() * choices.length)],
+        time: SPECIAL_TIME,
+      };
+      activeSpecials.push(s);
+      playSparkle();
+      // 등장 이펙트 : 반짝이가 퍼지고 글씨가 떠올라요
+      const info = SPECIAL_TYPES[s.type];
+      burst(s.brick.x + BRICK_W / 2, s.brick.y + BRICK_H / 2, 12, info.sparkle, 60, 140, 0);
+      floatText(info.label, s.brick.x + BRICK_W / 2, s.brick.y - 6, info.sparkle[0]);
+    }
+
+    function updateSpecials(dt) {
+      // 테트리스 줄 지우기로 벽돌이 없어졌으면 같이 없어져요
+      activeSpecials = activeSpecials.filter((s) => s.brick.alive);
+      activeSpecials.forEach((s) => {
+        s.time -= dt;
+        // 시간이 지나면 연기처럼 사라져요
+        if (s.time <= 0) burst(s.brick.x + BRICK_W / 2, s.brick.y + BRICK_H / 2, 8, ["#888", "#555"], 20, 60, -60);
+      });
+      activeSpecials = activeSpecials.filter((s) => s.time > 0);
+
+      spawnTimer -= dt;
+      if (spawnTimer <= 0 && activeSpecials.length < MAX_SPECIALS) {
+        spawnSpecial();
+        spawnTimer = SPAWN_GAP[0] + Math.random() * (SPAWN_GAP[1] - SPAWN_GAP[0]);
+      }
+    }
+
+    // 벽돌이 깨질 때 불러요 : 그 벽돌이 깜빡이는 특수 벽돌이면 효과를 줘요
+    function checkSpecial(b) {
+      const s = activeSpecials.find((o) => o.brick === b);
+      if (!s) return;
+      activeSpecials = activeSpecials.filter((o) => o !== s);
+      usedTypes.add(s.type); // 이번 판에는 다시 안 나와요
+      applySpecial(s.type, b.x + BRICK_W / 2, b.y + BRICK_H / 2);
+    }
+
+    // 특수 벽돌 효과 주기 : (cx, cy) 는 깨진 벽돌 가운데 (이펙트가 터지는 자리). 테스트 버튼도 이걸 불러요
+    function applySpecial(type, cx, cy) {
+      const s = { type };
+      if (SPECIAL_TYPES[type].label === "DANGER") playBad();
+      else playGood(); // 상, 이벤트(물음표·고양이)
+      if (s.type === "heart") {
+        lives += 1;
+        burst(cx, cy, 28, ["#ff3355", "#ff2e88", "#ffd6e7", "#fff"], 90, 240, 400);
+        floatText("1UP ❤️", cx, cy - 10, "#ff2e88");
+        fx.flash = 0.15;   // 화면이 한 번 분홍빛으로 번쩍
+        fx.flashColor = "255, 46, 136";
+        fx.hudPop = 1.0;   // 점수판의 새 하트가 커졌다가 제자리로
+      } else if (s.type === "big") {
+        timers.big = BIG_TIME;
+        burst(cx, cy, 32, FIRE_COLORS, 90, 260, -120);
+        floatText("FIRE BALL!", cx, cy - 10, "#ffd23f");
+        fx.flash = 0.2;
+        fx.flashColor = "255, 120, 30";
+        fx.shake = Math.max(fx.shake, 0.3);
+        playBoom();
+      } else if (s.type === "shrink") {
+        timers.shrink = SHRINK_TIME;
+        burst(cx, cy, 28, ["#b04dff", "#6a1fb0", "#555", "#e0b8ff"], 90, 240, 400);
+        floatText("SHRINK!", cx, cy - 10, "#b04dff");
+        fx.flash = 0.15;   // 화면이 한 번 보랏빛으로 번쩍
+        fx.flashColor = "176, 77, 255";
+        fx.shake = 0.35;   // 화면이 잠깐 흔들려요
+      } else if (s.type === "speed") {
+        timers.speed = SPEED_TIME;
+        setBallSpeed();
+        burst(cx, cy, 28, ["#3fd8ff", "#bff3ff", "#fff"], 90, 240, 400);
+        floatText("SPEED UP!", cx, cy - 10, "#3fd8ff");
+        fx.flash = 0.15;
+        fx.flashColor = "63, 216, 255";
+        fx.shake = 0.35;
+      } else if (s.type === "gun") {
+        timers.gun = GUN_TIME;
+        burst(cx, cy, 28, ["#b6ff3d", "#eaffc2", "#fff"], 90, 240, 400);
+        floatText("GUN! SPACE", cx, cy - 10, "#b6ff3d");
+        fx.flash = 0.15;
+        fx.flashColor = "182, 255, 61";
+      } else if (s.type === "ghost") {
+        timers.ghost = GHOST_TIME;
+        // 공이 연기처럼 "펑" 하고 사라져요
+        burst(ball.x + ball.size / 2, ball.y + ball.size / 2, 20, ["#9b9bb5", "#e0e0f0", "#666"], 40, 140, -60);
+        floatText("INVISIBLE!", cx, cy - 10, "#e0e0f0");
+        fx.flash = 0.12;
+        fx.flashColor = "155, 155, 181";
+      } else if (s.type === "buddha") {
+        showFigure("buddha");
+        floatText("PEACE~", W / 2, H / 2 + 80, "#ffd98a");
+        clearFrontRow();
+      } else if (s.type === "jesus") {
+        showFigure("jesus");
+        floatText("SAVE x1", W / 2, H / 2 + 80, "#fff3c4");
+        jesusSave = true;
+      } else if (s.type === "bomb") {
+        startBomb();
+        burst(cx, cy, 24, ["#ffd23f", "#ff8a3d", "#fff"], 90, 240, 400);
+        floatText("BOMB! 5 SEC", W / 2, H / 2, "#ffd23f"); // 글씨가 길어서 가운데에 (가장자리에서 안 잘리게)
+      } else if (s.type === "ad") {
+        showAd();
+      } else if (s.type === "addrow") {
+        addBrickRow();
+      } else if (s.type === "hole") {
+        openHole();
+        burst(cx, cy, 28, ["#5a7dff", "#c8d4ff", "#555"], 90, 240, 400);
+        floatText("WALL BREAK!", cx, cy - 10, "#5a7dff");
+      } else if (s.type === "tetris") {
+        burst(cx, cy, 28, ["#ffe14d", "#2ec8ff", "#2ee86b", "#ff2e88"], 90, 240, 400);
+        floatText("TETRIS TIME!", W / 2, H / 2, "#ffe14d");
+        fx.flash = 0.15;   // 화면이 한 번 노란빛으로 번쩍
+        fx.flashColor = "255, 225, 77";
+        startTetris();
+      } else if (s.type === "cat") {
+        burst(cx, cy, 20, ["#d9a066", "#fff1dc", "#ff9ab0"], 90, 240, 400);
+        floatText("MEOW?", cx, cy - 10, "#ffd9a8");
+        startCat();
+      }
+    }
+
+    // 특수 벽돌 : 하양 ↔ 그 종류의 색으로 깜빡이고, 2초 남으면 더 빨리 깜빡여요. 아래 막대는 남은 시간
+    function drawSpecialBricks() {
+      activeSpecials.forEach((s) => {
+        if (!s.brick.alive) return;
+        const b = s.brick;
+        const info = SPECIAL_TYPES[s.type];
+        const speed = s.time < 2 ? 10 : 4; // 1초에 깜빡이는 횟수
+        const on = Math.floor(s.time * speed * 2) % 2 === 0;
+        const hx = b.x + (BRICK_W - 14) / 2;
+        const hy = b.y + (BRICK_H - 12) / 2;
+        if (on) {
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(b.x - 1, b.y - 1, BRICK_W + 2, BRICK_H + 2);
+        }
+        drawPixelArt(info.art, hx + 2, hy + 2, 2, "#000"); // 그림자
+        drawPixelArt(info.art, hx, hy, 2, on ? "#fff" : info.color);
+        ctx.fillStyle = on ? "#fff" : info.color;
+        ctx.fillRect(b.x, b.y + BRICK_H + 2, BRICK_W * (s.time / SPECIAL_TIME), 2);
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 고양이 이벤트 : 고양이 벽돌을 깨면, 오락기보다 키가 큰 아기 고양이가 페이지 바깥에서 사뿐사뿐 뒤뚱뒤뚱 걸어와요
+    //   몸은 오락기 뒤에 서 있고, 앞발만 게임 화면 위로 넘어와서 벽돌을 할퀴어요. 할퀸 뒤에는 뿌듯하게 웃어요
+    //   할퀸 자국 3줄에 걸린 벽돌은 와장창 깨지고 점수도 들어와요. 그동안 공·패들은 그대로 움직여요
+    //   고양이는 게임 화면이 아니라 페이지 전체를 덮는 그림판 두 장에 그려요 : cat-back(오락기 뒤), cat-front(오락기 앞)
+    const CAT_WALK_IN = 2.5;   // 걸어 들어오는 시간 (초)
+    const CAT_STEP = 0.42;     // 한 걸음 시간 (초)
+    const CAT_MEOW = [2.5, 3.0];   // "냥~" 하고 우는 시간
+    const CAT_RAISE = [3.0, 3.4];  // 앞발 들기
+    const CAT_SWIPE = [3.4, 3.75]; // 할퀴기
+    const CAT_PULL = [3.75, 4.3];  // 앞발 거두기
+    const CAT_HAPPY = [3.75, 4.6]; // 뿌듯한 얼굴 + 하트
+    const CAT_WALK_OUT = [4.6, 6.6]; // 걸어 나가기
+    const CAT_TIME = CAT_WALK_OUT[1];
+    const CAT_HEIGHT = 1.15;   // 고양이 키 = 게임 화면 높이의 몇 배
+    const CLAW_REACH = 13;     // 할퀸 자국에서 이 거리 안에 있는 벽돌이 깨져요
+
+    // 글자마다 색 : B 몸 D 줄무늬 P 분홍(귀·발바닥) K 볼터치 E 눈·입 H 눈 반짝 W 하얀 털 N 코 (. 은 빈칸)
+    const CAT_COLORS = { B: "#e0a96d", D: "#b0723f", P: "#ffb3c4", K: "#ff8fab", E: "#2a1a14", H: "#fff", W: "#fff4e3", N: "#ff7a9a" };
+    // 앞을 보고 선 아기 고양이 (머리가 크고 몸이 작아요). 발은 따로 그려요
+    const CAT_BODY = [
+      "..BB............BB..",
+      ".BPPB..........BPPB.",
+      ".BPPBB........BBPPB.",
+      "BBBBBBBDBDDBDBBBBBBB",
+      "BBBBBBBBDBBDBBBBBBBB",
+      "BBBBBBBBBBBBBBBBBBBB",
+      "BBBEEEBBBBBBBBEEEBBB",
+      "BBEEHEEBBBBBBEEHEEBB",
+      "BBEEEEEBBNNBBEEEEEBB",
+      "BBBEEEBBBWWBBBEEEBBB",
+      "BKKBBBBWWEEWWBBBBKKB",
+      ".BBBBBBBWWWWBBBBBBB.",
+      "..BBBBBBBBBBBBBBBB..",
+      "....BBBBBBBBBBBB....",
+      "...BBBBWWWWWWBBBB...",
+      "...BBBWWWWWWWWBBB...",
+      "...BBBWWWWWWWWBBB...",
+      "....BBBWWWWWWBBB....",
+      "....BBBBBBBBBBBB....",
+    ];
+    const CAT_ROWS = CAT_BODY.length + 2; // + 발 2줄
+    const CAT_COLS = CAT_BODY[0].length;
+    const EYES = [[2, 6], [13, 17]]; // 두 눈의 가로 칸 범위 (6 ~ 9번째 줄)
+
+    // 눈 모양 바꾸기 : "open" 그대로, "blink" 일자 눈(—), "happy" 웃는 눈(^)
+    function catFace(eyes, mouthOpen) {
+      return CAT_BODY.map((row, r) => {
+        const chars = [...row];
+        if (eyes !== "open" && r >= 6 && r <= 9) {
+          EYES.forEach(([a, b]) => {
+            for (let c = a; c <= b; c++) {
+              let ch = "B";
+              if (eyes === "blink" && r === 8) ch = "E";
+              if (eyes === "happy" && r === 7 && c > a && c < b) ch = "E";
+              if (eyes === "happy" && r === 8 && (c === a || c === b)) ch = "E";
+              chars[c] = ch;
+            }
+          });
+        }
+        if (mouthOpen && r === 10) { chars[9] = "N"; chars[10] = "N"; }
+        if (mouthOpen && r === 11) { chars[9] = "N"; chars[10] = "N"; }
+        return chars.join("");
+      });
+    }
+
+    const CAT_PAW = [
+      ".W.W.W..",
+      ".W.W.W..",
+      "BBBBBBBB",
+      "BPBBPBPB",
+      "BBBPPBBB",
+      "BBBBBBBB",
+      ".BBBBBB.",
+    ];
+    // 팔이 작을 때 쓰는 작은 앞발 (칸 크기는 몸과 같게 두고, 칸 수를 줄여서 작게 해요)
+    const CAT_PAW_M = [
+      "W.W.W.",
+      "BBBBBB",
+      "BPBBPB",
+      "BBPPBB",
+      ".BBBB.",
+    ];
+    const CAT_PAW_S = [
+      "W.W.W",
+      "BBBBB",
+      "BBPBB",
+      ".BBB.",
+    ];
+    // 팔 굵기와 길이 (1 = 처음 만든 크기). 굵기 50%, 길이 40% 로 확정
+    //   앞발이 벽돌까지 안 닿아도, 발톱 자국(할퀸 바람)은 그대로 벽돌까지 날아가요
+    const catArmScale = 0.5;
+    const catArmLength = 0.4;
+    const CAT_SWIPE_ARC = 100; // 할퀼 때 앞발이 휘두르는 각도 (도)
+    function pawArt() {
+      if (catArmScale >= 0.9) return CAT_PAW;
+      if (catArmScale >= 0.7) return CAT_PAW_M;
+      return CAT_PAW_S;
+    }
+    const MINI_HEART = [".XX.XX.", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."];
+
+    // side : 1 = 왼쪽에서 와서 오락기 왼쪽에 서요, -1 = 오른쪽에서 와서 오락기 오른쪽에 서요
+    // lines = 할퀸 자국 3줄 (게임 화면 좌표) [[시작 x, y], [끝 x, y]]
+    const cat = { active: false, t: 0, side: 1, lines: [], steps: 0 };
+    const catBack = document.getElementById("cat-back");
+    const catFront = document.getElementById("cat-front");
+    const backCtx = catBack.getContext("2d");
+    const frontCtx = catFront.getContext("2d");
+
+    function startCat() {
+      cat.active = true;
+      cat.t = 0;
+      cat.steps = 0;
+      cat.side = Math.random() < 0.5 ? 1 : -1;
+      // 고양이가 선 쪽 위에서 반대쪽 아래로 비스듬히 3줄
+      const x0 = cat.side === 1 ? 10 : W - 10;
+      const x1 = cat.side === 1 ? W - 10 : 10;
+      cat.lines = [-34, 0, 34].map((off) => [[x0, 50 + off], [x1, 230 + off]]);
+    }
+
+    // 게임 화면 좌표 → 페이지 좌표 (게임 화면은 화면 크기에 따라 늘었다 줄었다 해요)
+    function gameToPage(gx, gy) {
+      const r = canvas.getBoundingClientRect();
+      return [r.left + gx * (r.width / W), r.top + gy * (r.height / H)];
+    }
+
+    const clamp01 = (k) => Math.min(1, Math.max(0, k));
+    const easeInOut = (k) => { k = clamp01(k); return k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; };
+    const easeOut = (k) => 1 - Math.pow(1 - clamp01(k), 2);
+    const phase = ([a, b]) => clamp01((cat.t - a) / (b - a)); // 그 구간에서 얼마나 지났는지 0 ~ 1
+    const swipeK = () => easeInOut(phase(CAT_SWIPE)); // 할퀴기는 천천히 시작해서 휙 지나가고 사르르 멈춰요
+
+    function catWalking() {
+      return cat.t < CAT_WALK_IN || cat.t >= CAT_WALK_OUT[0];
+    }
+
+    // 고양이 위치·크기·몸짓 (페이지 좌표). 발은 게임 화면 바닥에 맞춰요
+    function catPlacement() {
+      const r = canvas.getBoundingClientRect();
+      const box = document.querySelector(".cabinet").getBoundingClientRect();
+      // 크기 : 게임 화면 높이 × CAT_HEIGHT 를 넘지 않고, 오락기 옆 빈자리에 몸 전체가 들어갈 만큼
+      const room = cat.side === 1 ? box.left : window.innerWidth - box.right;
+      const byHeight = (r.height * CAT_HEIGHT) / CAT_ROWS;
+      const byRoom = (room * 1.15) / CAT_COLS;
+      const cell = Math.max(6, Math.round(Math.min(byHeight, Math.max(byRoom, byHeight * 0.45))));
+      const width = CAT_COLS * cell;
+      // 서는 자리 : 오락기 옆에 바짝 붙어서, 몸 가장자리만 오락기 뒤로 살짝 숨어요
+      const standX = cat.side === 1 ? box.left - width + cell * 2 : box.right - cell * 2;
+      const outX = cat.side === 1 ? -width - 40 : window.innerWidth + 40;
+      let x = standX;
+      if (cat.t < CAT_WALK_IN) x = outX + (standX - outX) * easeOut(cat.t / CAT_WALK_IN);
+      else if (cat.t >= CAT_WALK_OUT[0]) x = standX + (outX - standX) * easeInOut(phase(CAT_WALK_OUT));
+
+      // 걸음 : 통통 튀고(hop), 좌우로 뒤뚱(tilt), 착지할 때 살짝 눌려요(squash). 발은 번갈아 들어요
+      const wave = Math.sin((cat.t / CAT_STEP) * Math.PI);
+      const walking = catWalking();
+      const hop = walking ? Math.abs(wave) * cell * 0.9 : 0;
+      const squash = walking ? Math.pow(1 - Math.abs(wave), 3) * 0.07 : Math.sin(cat.t * 4) * 0.012; // 서 있을 땐 숨쉬기
+      const tilt = walking ? wave * 0.07 : 0;
+      const feet = walking ? [Math.max(0, wave), Math.max(0, -wave)].map((k) => k * cell * 1.2) : [0, 0];
+      const bottom = r.bottom + cell * 1.5; // 발바닥 위치
+      return { x: Math.round(x), bottom, cell, width, hop, squash, tilt, feet };
+    }
+
+    // 도트 그림 그리기 : 기울이거나 늘일 때 칸 사이에 틈이 안 보이게 칸을 아주 살짝 겹쳐 그려요
+    function drawCells(c, art, x, y, cell) {
+      art.forEach((row, r) => {
+        [...row].forEach((ch, col) => {
+          if (ch === ".") return;
+          c.fillStyle = CAT_COLORS[ch] || ch;
+          c.fillRect(x + col * cell, y + r * cell, cell + 0.8, cell + 0.8);
+        });
+      });
+    }
+
+    function updateCat(dt) {
+      if (!cat.active) return;
+      const before = cat.t;
+      cat.t += dt;
+      // 발이 땅에 닿을 때마다 "뽁" (아주 살짝 흔들려요)
+      const steps = Math.floor(cat.t / CAT_STEP);
+      if (catWalking() && steps > cat.steps) {
+        fx.shake = Math.max(fx.shake, 0.08);
+        playStep();
+      }
+      cat.steps = steps;
+      if (before < CAT_MEOW[0] && cat.t >= CAT_MEOW[0]) {
+        playMeow();
+        floatText("NYA~!", cat.side === 1 ? 70 : W - 70, 200, "#ffd9a8");
+      }
+      if (cat.t >= CAT_SWIPE[0]) clawBricks(swipeK());
+      if (before < CAT_SWIPE[0] && cat.t >= CAT_SWIPE[0]) {
+        playSwipe();
+        fx.shake = Math.max(fx.shake, 0.25);
+      }
+      if (before < CAT_SWIPE[1] && cat.t >= CAT_SWIPE[1]) {
+        fx.flash = 0.08;
+        fx.flashColor = "255, 179, 196";
+      }
+      if (cat.t >= CAT_TIME) {
+        cat.active = false;
+        clearCatLayers();
+      }
+      // 고양이가 벽돌을 다 깼으면 클리어
+      if (!gameOver && !tetris.active && !bricks.some((b) => b.alive)) showEnd(true);
+    }
+
+    // 점 (px, py) 와 선분 사이 : 거리와, 선분 위 어디쯤인지(0 ~ 1)
+    function nearLine(px, py, [[ax, ay], [bx, by]]) {
+      const dx = bx - ax, dy = by - ay;
+      const u = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+      return { u, dist: Math.hypot(px - (ax + u * dx), py - (ay + u * dy)) };
+    }
+
+    // 발톱이 지나간 곳까지의 벽돌을 깨요
+    function clawBricks(progress) {
+      bricks.forEach((b) => {
+        if (!b.alive) return;
+        const cx = b.x + BRICK_W / 2, cy = b.y + BRICK_H / 2;
+        const hit = cat.lines.some((line) => {
+          const n = nearLine(cx, cy, line);
+          return n.dist < CLAW_REACH && n.u <= progress;
+        });
+        if (!hit) return;
+        b.alive = false;
+        score += b.points;
+        burst(cx, cy, 10, [b.color, "#fff", b.color], 80, 260, 500);
+      });
+    }
+
+    // 그림판 크기를 창 크기에 맞춰요
+    function fitLayer(el) {
+      if (el.width !== window.innerWidth || el.height !== window.innerHeight) {
+        el.width = window.innerWidth;
+        el.height = window.innerHeight;
+      }
+    }
+    function clearCatLayers() {
+      backCtx.clearRect(0, 0, catBack.width, catBack.height);
+      frontCtx.clearRect(0, 0, catFront.width, catFront.height);
+    }
+
+    // 고양이 몸(오락기 뒤)과 앞발(오락기 앞) 그리기
+    function drawCatLayers() {
+      if (!cat.active) return;
+      const p = catPlacement();
+      const c = backCtx;
+      const bodyH = CAT_BODY.length * p.cell;
+
+      // 얼굴 : 2.2초마다 눈 깜빡, 울 때 입 벌리기, 할퀼 때 질끈, 할퀸 뒤 웃는 눈
+      let eyes = cat.t % 2.2 < 0.12 ? "blink" : "open";
+      if (cat.t >= CAT_SWIPE[0] && cat.t < CAT_SWIPE[1]) eyes = "blink";
+      if (cat.t >= CAT_HAPPY[0] && cat.t < CAT_HAPPY[1]) eyes = "happy";
+      const meowing = cat.t >= CAT_MEOW[0] && cat.t < CAT_MEOW[1];
+      const face = catFace(eyes, meowing);
+
+      // 몸 전체 : 발바닥 가운데를 기준으로 뒤뚱(회전)하고 눌려요(크기)
+      const pivotX = p.x + p.width / 2;
+      const pivotY = p.bottom - p.cell * 2 - p.hop;
+      c.save();
+      c.translate(pivotX, pivotY);
+      c.rotate(p.tilt);
+      c.scale(1 + p.squash, 1 - p.squash);
+      const left = -p.width / 2;
+
+      // 꼬리 : 오락기 반대쪽에서 살랑살랑 (몸 뒤에 그려요)
+      const tailDir = -cat.side;
+      let tx = tailDir === -1 ? left + 4 * p.cell : left + 15 * p.cell;
+      let ty = -3 * p.cell;
+      for (let i = 0; i < 7; i++) {
+        const sway = Math.sin(cat.t * 3 - i * 0.5) * 0.5;
+        const ang = -Math.PI / 2 * (i / 7) + sway * (i / 7);
+        tx += tailDir * Math.cos(ang) * p.cell * 0.9;
+        ty += Math.sin(ang) * p.cell * 0.9 - p.cell * 0.3;
+        c.fillStyle = i >= 5 ? CAT_COLORS.D : CAT_COLORS.B;
+        c.fillRect(Math.round(tx), Math.round(ty), Math.round(p.cell * 1.4), Math.round(p.cell * 1.4));
+      }
+
+      // 몸·머리 (울 때는 고개를 살짝 쳐들어요)
+      const meowLift = meowing ? Math.sin(phase(CAT_MEOW) * Math.PI) * p.cell * 0.8 : 0;
+      drawCells(c, face.slice(0, 13), left, -bodyH - meowLift, p.cell);
+      drawCells(c, face.slice(13), left, -bodyH + 13 * p.cell, p.cell);
+
+      // 발 : 하얀 양말, 걸을 때 번갈아 들려요
+      [[5, p.feet[0]], [11, p.feet[1]]].forEach(([col, lift]) => {
+        c.fillStyle = CAT_COLORS.B;
+        c.fillRect(left + col * p.cell, -lift, 4 * p.cell, p.cell);
+        c.fillStyle = CAT_COLORS.W;
+        c.fillRect(left + col * p.cell, p.cell - lift, 4 * p.cell, p.cell);
+      });
+      c.restore();
+
+      // 할퀸 뒤 : 머리 위로 하트 두 개가 퐁퐁 떠올라요
+      if (cat.t >= CAT_HAPPY[0] && cat.t < CAT_HAPPY[1]) {
+        const k = phase(CAT_HAPPY);
+        c.globalAlpha = 1 - k;
+        [[-0.25, 0], [0.2, 0.15]].forEach(([dx, delay]) => {
+          const kk = clamp01(k - delay);
+          const hx = pivotX + dx * p.width;
+          const hy = pivotY - bodyH - p.cell * 2 - kk * p.cell * 5;
+          drawCells(c, MINI_HEART.map((row) => row.replace(/X/g, "K")), Math.round(hx), Math.round(hy), Math.max(3, Math.round(p.cell * 0.6)));
+        });
+        c.globalAlpha = 1;
+      }
+
+      // 앞발 : 어깨에서 → 높이 들었다가 → 가운데 자국을 따라 할퀴고 → 돌아와요
+      if (cat.t < CAT_RAISE[0] || cat.t >= CAT_PULL[1]) return;
+      const shoulderCol = cat.side === 1 ? 16 : 3;
+      const shoulder = [pivotX + (shoulderCol + 0.5) * p.cell - p.width / 2, pivotY - bodyH + 14.5 * p.cell];
+      // 할퀴기 : 어깨를 중심으로 앞발이 부채꼴로 CAT_SWIPE_ARC 도만큼 휙 돌아요
+      //   가운데 방향은 가운데 발톱 자국의 한가운데. 위에서 아래로 쓸어내려요
+      const mid = cat.lines[1];
+      const start = gameToPage(mid[0][0], mid[0][1]);
+      const end = gameToPage(mid[1][0], mid[1][1]);
+      const aStart = Math.atan2(start[1] - shoulder[1], start[0] - shoulder[0]);
+      const aEnd = Math.atan2(end[1] - shoulder[1], end[0] - shoulder[0]);
+      const turn = Math.atan2(Math.sin(aEnd - aStart), Math.cos(aEnd - aStart)); // 시작 → 끝 사이 각도 (-π ~ π)
+      const center = aStart + turn / 2;
+      const half = (CAT_SWIPE_ARC / 2) * (Math.PI / 180) * Math.sign(turn || 1);
+      const a0 = center - half, a1 = center + half;
+      const reach = Math.hypot(start[0] - shoulder[0], start[1] - shoulder[1]) * catArmLength; // 팔 길이
+      const pawAt = (a, r) => [shoulder[0] + Math.cos(a) * r, shoulder[1] + Math.sin(a) * r];
+      let paw;
+      if (cat.t < CAT_RAISE[1]) {
+        // 어깨에서 할퀴기 시작 자리까지 쭉 뻗으며 들어 올려요
+        paw = pawAt(a0, reach * easeInOut(phase(CAT_RAISE)));
+      } else if (cat.t < CAT_SWIPE[1]) {
+        paw = pawAt(a0 + (a1 - a0) * swipeK(), reach);
+      } else {
+        paw = pawAt(a1, reach * (1 - easeInOut(phase(CAT_PULL))));
+      }
+      drawPixelArm(shoulder, paw, p.cell);
+    }
+
+    // 도트 팔 : 팔과 앞발을 작은 그림판에 "몸의 한 칸 = 1픽셀"로 그린 뒤, 흐림 없이 크게 키워서 붙여요
+    //   그래서 팔도 몸과 같은 크기의 네모 칸으로 이루어져요
+    //   칸 색은 고양이 색 중 가장 가까운 색으로 바꿔서, 몸처럼 몇 가지 색만 써요
+    const ARM_PALETTE = [...new Set([...Object.values(CAT_COLORS), "#f0c48f"])].map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+    const armBuf = document.createElement("canvas");
+    const armCtx = armBuf.getContext("2d", { willReadFrequently: true });
+    function drawPixelArm(shoulder, paw, px) {
+      const art = pawArt();
+      const pw = CAT_PAW[0].length * px * catArmScale; // 팔 굵기의 기준 (팔 크기만큼 줄어요)
+      const margin = pw * 1.2;
+      const minX = Math.floor((Math.min(shoulder[0], paw[0]) - margin) / px) * px; // 칸에 맞춰요
+      const minY = Math.floor((Math.min(shoulder[1], paw[1]) - margin) / px) * px;
+      const maxX = Math.max(shoulder[0], paw[0]) + margin;
+      const maxY = Math.max(shoulder[1], paw[1]) + margin;
+      armBuf.width = Math.ceil((maxX - minX) / px);
+      armBuf.height = Math.ceil((maxY - minY) / px);
+      armCtx.setTransform(1 / px, 0, 0, 1 / px, -minX / px, -minY / px);
+      drawChubbyArm(armCtx, shoulder, paw, pw, px);
+      // 앞발 : 발톱이 팔이 뻗은 쪽을 향하게, 90도 단위로만 돌려요 (칸이 반듯해서 발톱·젤리가 또렷해요)
+      const angle = Math.atan2(paw[1] - shoulder[1], paw[0] - shoulder[0]) + Math.PI / 2;
+      const snapped = Math.round(angle / (Math.PI / 2)) * (Math.PI / 2);
+      armCtx.save();
+      armCtx.translate(minX + Math.round((paw[0] - minX) / px) * px, minY + Math.round((paw[1] - minY) / px) * px);
+      armCtx.rotate(snapped);
+      drawCells(armCtx, art, -Math.floor(art[0].length / 2) * px, -Math.floor(art.length / 2) * px, px);
+      armCtx.restore();
+      // 가장자리 정리 : 반 넘게 칠해진 칸은 꽉 채우고 아니면 빈칸, 색은 고양이 색 중 가장 가까운 색으로
+      const img = armCtx.getImageData(0, 0, armBuf.width, armBuf.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) { d[i + 3] = 0; continue; }
+        d[i + 3] = 255;
+        let best = ARM_PALETTE[0], bestDist = Infinity;
+        for (const col of ARM_PALETTE) {
+          const dist = (d[i] - col[0]) ** 2 + (d[i + 1] - col[1]) ** 2 + (d[i + 2] - col[2]) ** 2;
+          if (dist < bestDist) { bestDist = dist; best = col; }
+        }
+        [d[i], d[i + 1], d[i + 2]] = best;
+      }
+      armCtx.putImageData(img, 0, 0);
+      frontCtx.imageSmoothingEnabled = false;
+      frontCtx.drawImage(armBuf, minX, minY, armBuf.width * px, armBuf.height * px);
+    }
+
+    // 통통한 팔 : 동그라미를 줄줄이 겹쳐 그려서 말랑한 털뭉치처럼 보이게 해요
+    //   어깨 쪽이 가장 굵고, 가운데가 살짝 볼록, 손목 쪽은 조금 가늘어요. 줄무늬 3개
+    function drawChubbyArm(c, shoulder, paw, pawWidth, cell) {
+      const dx = paw[0] - shoulder[0], dy = paw[1] - shoulder[1];
+      const len = Math.hypot(dx, dy);
+      const steps = Math.max(2, Math.ceil(len / (cell * 0.6)));
+      const rolls = Math.max(3, Math.round(len / (pawWidth * 0.9))); // 털뭉치 마디 수
+      const radius = (t) => {
+        const base = pawWidth * (0.85 - 0.2 * t); // 어깨 0.85 → 손목 0.65 (지름이 앞발 폭의 몇 배, 앞발이 손목보다 커서 벙어리장갑 같아요)
+        const belly = 1 + 0.12 * Math.sin(t * Math.PI);              // 가운데 볼록
+        const fluff = 1 + 0.07 * Math.abs(Math.sin(t * rolls * Math.PI)); // 몽글몽글 마디
+        return (base / 2) * belly * fluff;
+      };
+      const at = (t) => [shoulder[0] + dx * t, shoulder[1] + dy * t];
+      // 테두리 → 몸 색 → 아래쪽 그림자 순서로 겹쳐 그려요
+      [["#b0723f", cell], [CAT_COLORS.B, 0]].forEach(([color, extra]) => { // 테두리는 딱 한 칸
+        c.fillStyle = color;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const [x, y] = at(t);
+          c.beginPath();
+          c.arc(x, y, radius(t) + extra, 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+      // 위쪽 밝은 털 (팔이 동글동글 도톰해 보이게)
+      const nx = -dy / len, ny = dx / len; // 팔에 수직인 방향
+      const up = ny > 0 ? -1 : 1;          // 화면 위쪽으로 향하는 쪽
+      c.fillStyle = "#f0c48f";
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const [x, y] = at(t);
+        const rr = radius(t);
+        c.beginPath();
+        c.arc(x + nx * up * rr * 0.35, y + ny * up * rr * 0.35, rr * 0.45, 0, Math.PI * 2);
+        c.fill();
+      }
+      // 줄무늬 : 팔을 가로지르는 짧은 띠 3개
+      c.save();
+      c.translate(shoulder[0], shoulder[1]);
+      c.rotate(Math.atan2(dy, dx));
+      c.fillStyle = CAT_COLORS.D;
+      [0.3, 0.45, 0.6].forEach((t) => {
+        const rr = radius(t);
+        c.fillRect(len * t - cell * 0.5, -rr * 0.8, cell, rr * 1.6); // 줄무늬 폭 = 딱 한 칸
+      });
+      c.restore();
+    }
+
+    // 할퀸 자국은 게임 화면에 그려요 : 하얀 줄 + 분홍 테두리, 할퀸 뒤 1초 동안 흐려져요
+    function drawCat() {
+      if (!cat.active || cat.t < CAT_SWIPE[0]) return;
+      const p = swipeK();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 51, W, H - 51); // 점수판은 안 가리게
+      ctx.clip();
+      ctx.globalAlpha = Math.max(0, 1 - Math.max(0, cat.t - CAT_SWIPE[1]));
+      ctx.lineCap = "round";
+      cat.lines.forEach(([[ax, ay], [bx, by]]) => {
+        const ex = ax + (bx - ax) * p, ey = ay + (by - ay) * p;
+        [["#ff7a9a", 10], ["#fff", 4]].forEach(([color, width]) => {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        });
+      });
+      ctx.restore();
+    }
+
+    // 소리 : 걸음 "뽁"(짧고 가벼운 높은 음), "냥~"(높게 올라갔다 내려오며 살짝 떨려요), 할퀴는 "쉭"
+    function playStep() {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(380, t);
+      osc.frequency.exponentialRampToValueAtTime(760, t + 0.05);
+      env.gain.setValueAtTime(0.12, t);
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+
+    function playMeow() {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const vibrato = audioCtx.createOscillator();
+      const vibratoAmount = audioCtx.createGain();
+      const env = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(700, t);
+      osc.frequency.linearRampToValueAtTime(1150, t + 0.12);
+      osc.frequency.linearRampToValueAtTime(820, t + 0.42);
+      vibrato.frequency.value = 9;
+      vibratoAmount.gain.value = 25;
+      vibrato.connect(vibratoAmount);
+      vibratoAmount.connect(osc.frequency);
+      env.gain.setValueAtTime(0, t);
+      env.gain.linearRampToValueAtTime(0.16, t + 0.04);
+      env.gain.linearRampToValueAtTime(0.1, t + 0.3);
+      env.gain.linearRampToValueAtTime(0, t + 0.45);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t);
+      vibrato.start(t);
+      osc.stop(t + 0.46);
+      vibrato.stop(t + 0.46);
+    }
+
+    // 폭발 소리 : 낮게 "쿠웅" + 잡음 "콰직". 한꺼번에 여러 번 터져도 0.08초에 한 번만 내요
+    let lastBoom = 0;
+    function playBoom() {
+      ensureAudio();
+      if (!audioCtx || audioCtx.currentTime - lastBoom < 0.08) return;
+      const t = audioCtx.currentTime;
+      lastBoom = t;
+      const osc = audioCtx.createOscillator();
+      const oscEnv = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(140, t);
+      osc.frequency.exponentialRampToValueAtTime(40, t + 0.25);
+      oscEnv.gain.setValueAtTime(0.2, t);
+      oscEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      osc.connect(oscEnv);
+      oscEnv.connect(master);
+      osc.start(t);
+      osc.stop(t + 0.3);
+      const length = 0.25;
+      const buffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * length), audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      const noise = audioCtx.createBufferSource();
+      const filter = audioCtx.createBiquadFilter();
+      const env = audioCtx.createGain();
+      noise.buffer = buffer;
+      filter.type = "lowpass";
+      filter.frequency.value = 1200;
+      env.gain.value = 0.3;
+      noise.connect(filter);
+      filter.connect(env);
+      env.connect(master);
+      noise.start(t);
+    }
+
+    function playSwipe() {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const length = 0.3;
+      const buffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * length), audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const noise = audioCtx.createBufferSource();
+      const filter = audioCtx.createBiquadFilter();
+      const env = audioCtx.createGain();
+      noise.buffer = buffer;
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(4000, t);
+      filter.frequency.exponentialRampToValueAtTime(500, t + length);
+      env.gain.setValueAtTime(0.25, t);
+      env.gain.linearRampToValueAtTime(0, t + length);
+      noise.connect(filter);
+      filter.connect(env);
+      env.connect(master);
+      noise.start(t);
+    }
+
+    // ---------------------------------------------------------
+    // 시간이 정해진 효과 : 남은 시간(초). 0 이면 꺼진 것. 공이 날아다니는 동안만 줄어요
+    const SHRINK_TIME = 8;  // 패들이 짧아진 채로 있는 시간
+    const SPEED_TIME = 8;   // 공이 빠른 채로 있는 시간
+    const BIG_TIME = 8;     // 공이 큰 채로 있는 시간
+    const HOLE_TIME = 10;   // 벽 구멍이 뚫려 있는 시간
+    const GUN_TIME = 5;     // 총을 쏠 수 있는 시간 (짧게)
+    // ---------------------------------------------------------
+    // 부처님·예수님 : 화면 가운데에 귀여운 상체가 금빛 후광과 함께 나타났다가 빠르게 사라져요 (게임은 계속돼요)
+    const FIGURE_TIME = 1.3;
+    // 글자마다 색 : S 피부 G 머리(곱슬) H 머리·수염(갈색) E 눈·입 U 이마 점 K 볼터치 O·R 주황 가사(밝은·어두운) W 빨간 옷 B 파란 겉옷
+    const FIGURE_COLORS = {
+      S: "#f5c99b", G: "#3a2a20", H: "#7a4a26", E: "#3a2a20", U: "#ff5a5a", K: "#ffa3a3",
+      O: "#ff9a2e", R: "#d9701a", W: "#d93a3a", B: "#4a7dd9",
+    };
+    const BUDDHA = [
+      "......GGGG......",
+      ".....GGGGGG.....",
+      "....GGGGGGGG....",
+      "...GGGGGGGGGG...",
+      "...SSSSSSSSSS...",
+      "..SSSSSUSSSSSS..",
+      ".SSEEESSSSEEESS.",
+      ".SSSSSSSSSSSSSS.",
+      "SSKKSSESSESSKKSS",
+      "S.SSSSSEESSSSS.S",
+      "....SSSSSSSS....",
+      "..OOOOOOOOOOOO..",
+      ".OOOROOSSOOROOO.",
+      ".OOROOSSSSOOROO.",
+      "OOOOOOOOOOOOOOOO",
+    ];
+    const JESUS = [
+      ".....HHHHHH.....",
+      "....HHHHHHHH....",
+      "...HHHHHHHHHH...",
+      "...HHSSSSSSHH...",
+      "..HHSSSSSSSSHH..",
+      "..HHSEESSEESHH..",
+      "..HHSSSSSSSSHH..",
+      "..HHKSSSSSSKHH..",
+      "..HHSHEHHEHSHH..",
+      "..HHHHHEEHHHHH..",
+      "...HHHHHHHHHH...",
+      "..WWWHHHHHHWWW..",
+      ".BWWWWWWWWWWWWB.",
+      ".BBWWSSWWSSWWBB.",
+      "BBBWWWWWWWWWWBBB",
+    ];
+    const figure = { type: null, t: 0 };
+    let jesusSave = false; // 예수님의 "한 번 꺼내 주기"가 남아 있는지
+
+    function showFigure(type) {
+      figure.type = type;
+      figure.t = 0;
+      fx.flash = 0.15;
+      fx.flashColor = "255, 230, 160";
+    }
+
+    // 금빛 후광 + 도트 상체. 처음 0.2초는 톡 커지며 나타나고, 0.6초부터 위로 살짝 떠오르며 사라져요
+    function drawFigure() {
+      if (!figure.type || figure.t >= FIGURE_TIME) return;
+      const t = figure.t;
+      const alpha = t < 0.2 ? t / 0.2 : t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / (FIGURE_TIME - 0.6));
+      const pop = t < 0.2 ? 0.8 + (t / 0.2) * 0.2 : 1;
+      const rise = t > 0.6 ? (t - 0.6) * 30 : 0;
+      const art = figure.type === "buddha" ? BUDDHA : JESUS;
+      const cell = Math.round(9 * pop);
+      const w = art[0].length * cell, h = art.length * cell;
+      const x = Math.round(W / 2 - w / 2), y = Math.round(H / 2 - h / 2 - rise);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // 후광 : 머리 뒤 금빛 동그라미 + 빙글 도는 빛 조각
+      const hx = W / 2, hy = y + cell * 5;
+      ctx.fillStyle = "rgba(255, 217, 138, 0.35)";
+      ctx.beginPath();
+      ctx.arc(hx, hy, cell * 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffd98a";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(hx, hy, cell * 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#fff3c4";
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + t * 2;
+        ctx.fillRect(Math.round(hx + Math.cos(a) * cell * 9) - 3, Math.round(hy + Math.sin(a) * cell * 9) - 3, 6, 6);
+      }
+      art.forEach((row, r) => {
+        [...row].forEach((ch, c) => {
+          if (ch === ".") return;
+          ctx.fillStyle = FIGURE_COLORS[ch];
+          ctx.fillRect(x + c * cell, y + r * cell, cell, cell);
+        });
+      });
+      ctx.restore();
+    }
+
+    // 맨 앞줄(패들에 가장 가까운, 가장 아래에 남은 줄)의 벽돌을 한꺼번에 없애요 : 금빛 가루가 되어 흩어져요
+    function clearFrontRow() {
+      const alive = bricks.filter((b) => b.alive);
+      if (!alive.length) return;
+      const front = Math.max(...alive.map((b) => b.row));
+      alive.filter((b) => b.row === front).forEach((b) => {
+        b.alive = false;
+        score += b.points;
+        burst(b.x + BRICK_W / 2, b.y + BRICK_H / 2, 10, ["#ffd98a", "#fff3c4", b.color], 40, 140, -80);
+        checkSpecial(b);
+      });
+    }
+
+    // 벽돌 한 줄 추가 (벌) : 남은 벽돌이 모두 한 칸씩 내려오고, 비워진 맨 윗줄에 회색 돌 벽돌 8개가 생겨요
+    //   테트리스로 쌓은 벽돌이 너무 아래까지 와서 더 내려갈 자리가 없으면, 내리지 않고 맨 윗줄 빈칸만 채워요
+    const ADDED_ROW_COLOR = "#8a8aa8";
+    function addBrickRow() {
+      const alive = bricks.filter((b) => b.alive);
+      const lowest = alive.length ? Math.max(...alive.map((b) => b.row)) : -1;
+      if (lowest + 1 < GRID_ROWS) {
+        alive.forEach((b) => { b.row += 1; b.y = TOP + b.row * CELL_H; });
+      }
+      for (let c = 0; c < COLS; c++) {
+        if (bricks.some((b) => b.alive && b.row === 0 && b.col === c)) continue;
+        bricks.push({
+          row: 0, col: c,
+          x: LEFT + c * CELL_W, y: TOP,
+          color: ADDED_ROW_COLOR, points: ROW_POINTS[0], alive: true,
+        });
+        // 위에서 돌가루가 떨어져요
+        burst(LEFT + c * CELL_W + BRICK_W / 2, TOP, 4, ["#8a8aa8", "#c8c8e0", "#555"], 20, 80, 300);
+      }
+      floatText("MORE BRICKS!", W / 2, TOP + CELL_H * 2, "#c8c8e0");
+      fx.shake = Math.max(fx.shake, 0.35);
+      fx.flash = 0.12;
+      fx.flashColor = "160, 160, 192";
+    }
+
+    // ---------------------------------------------------------
+    // 폭탄 (상) : 공이 폭탄으로 변해서 5 → 1 카운트다운. 0이 되는 순간 공이 어디 있는지가 중요해요
+    //   노란 점선(성공 구역) 위 = 벽돌 근처 → "PERFECT!!" 폭탄 자리에서 가까운 벽돌부터 차례로 모든 벽돌이 펑펑
+    //   점선 아래 = 패들 쪽 → 작은 폭발 (둘레 벽돌 몇 개만)
+    //   카운트다운은 공이 날아다니는 동안만 흘러요. 공을 놓치거나 테트리스가 시작되면 폭탄은 사라져요
+    const BOMB_TIME = 5;        // 카운트다운 (초)
+    const BOMB_ZONE = 80;       // 성공 구역 = 가장 아래 벽돌에서 이만큼 아래까지 (픽셀)
+    const BOMB_SMALL = 60;      // 실패했을 때 작은 폭발 반경 (픽셀)
+    const BOMB_WAVE_SPEED = 700; // 성공했을 때 폭발이 퍼지는 빠르기 (1초에 몇 픽셀)
+    const BOMB_BEEPS = [4, 3, 2, 1, 0.75, 0.5, 0.25]; // 이 시간이 남았을 때 "틱" (마지막 1초는 빨라져요)
+    // wave = 차례로 터질 벽돌 [{ b, d(폭탄에서 거리) }], waveT = 퍼지기 시작한 뒤 지난 시간
+    const bomb = { time: 0, beep: 0, wave: [], waveT: 0 };
+
+    function startBomb() {
+      bomb.time = BOMB_TIME;
+      bomb.beep = 0;
+    }
+
+    // 성공 구역의 아래 끝 (y). 벽돌이 줄어들면 선도 따라 올라가요
+    function bombZoneY() {
+      const alive = bricks.filter((b) => b.alive);
+      if (!alive.length) return H;
+      return Math.max(...alive.map((b) => b.y + BRICK_H)) + BOMB_ZONE;
+    }
+
+    function updateBomb(dt) {
+      if (bomb.time <= 0) return;
+      bomb.time -= dt;
+      while (bomb.beep < BOMB_BEEPS.length && bomb.time <= BOMB_BEEPS[bomb.beep]) {
+        playBombTick(BOMB_BEEPS[bomb.beep] <= 1);
+        bomb.beep += 1;
+      }
+      if (bomb.time <= 0) {
+        bomb.time = 0;
+        detonateBomb();
+      }
+    }
+
+    function detonateBomb() {
+      const cx = ball.x + ball.size / 2, cy = ball.y + ball.size / 2;
+      playBoom();
+      fx.rings.push({ x: cx, y: cy, life: 0.5, max: 0.5 });
+      if (cy <= bombZoneY()) {
+        // 성공 : 모든 벽돌을 폭탄에서 가까운 순서로 줄 세워요 (updateBombWave 가 차례로 터뜨려요)
+        bomb.wave = bricks.filter((b) => b.alive)
+          .map((b) => ({ b, d: Math.hypot(b.x + BRICK_W / 2 - cx, b.y + BRICK_H / 2 - cy) }))
+          .sort((a, b) => a.d - b.d);
+        bomb.waveT = 0;
+        burst(cx, cy, 40, ["#fff", ...FIRE_COLORS], 120, 360, -100);
+        floatText("PERFECT!!", W / 2, H / 2, "#ffe14d");
+        fx.shake = Math.max(fx.shake, 0.6);
+        fx.flash = 0.3;
+        fx.flashColor = "255, 240, 180";
+        playGood();
+      } else {
+        // 실패 : 둘레 BOMB_SMALL 안의 벽돌만 터져요
+        bricks.forEach((b) => {
+          if (!b.alive || Math.hypot(b.x + BRICK_W / 2 - cx, b.y + BRICK_H / 2 - cy) > BOMB_SMALL) return;
+          b.alive = false;
+          score += b.points;
+          burst(b.x + BRICK_W / 2, b.y + BRICK_H / 2, 8, [b.color, ...FIRE_COLORS], 80, 240, -60);
+        });
+        burst(cx, cy, 20, FIRE_COLORS, 80, 220, -100);
+        burst(cx, cy, 10, ["#888", "#555"], 20, 80, -80); // 연기
+        floatText("TOO FAR...", cx, cy - 16, "#c8c8e0");
+        fx.shake = Math.max(fx.shake, 0.3);
+      }
+    }
+
+    // 성공한 폭발이 퍼져 나가요 : 폭발 고리가 닿은 벽돌부터 터져요. 다 터지면 클리어
+    function updateBombWave(dt) {
+      if (!bomb.wave.length) return;
+      bomb.waveT += dt;
+      const reach = bomb.waveT * BOMB_WAVE_SPEED;
+      while (bomb.wave.length && bomb.wave[0].d <= reach) {
+        const { b } = bomb.wave.shift();
+        if (!b.alive) continue;
+        b.alive = false;
+        score += b.points;
+        burst(b.x + BRICK_W / 2, b.y + BRICK_H / 2, 8, [b.color, ...FIRE_COLORS], 80, 260, -60);
+        playBoom(); // 여러 개가 한꺼번에 터져도 0.08초에 한 번만 소리 나요
+      }
+      if (!bomb.wave.length && !gameOver && !tetris.active && !bricks.some((b) => b.alive)) showEnd(true);
+    }
+
+    function cancelBomb() {
+      bomb.time = 0;
+    }
+
+    // "틱" 카운트다운 소리 : 마지막 1초는 높은 음
+    function playBombTick(urgent) {
+      const f = urgent ? 1760 : 990;
+      blip("square", f, f, 0.05, 0.06);
+    }
+
+    // 폭탄 공 : 동그란 도트 폭탄 + 심지 불꽃 + 위에 남은 초. 마지막 1초는 빨갛게 깜빡여요
+    const BOMB_BODY = [
+      "..XXXX..",
+      ".XXXXXX.",
+      "XXXXXXXX",
+      "XXXXXXXX",
+      "XXXXXXXX",
+      "XXXXXXXX",
+      ".XXXXXX.",
+      "..XXXX..",
+    ];
+    function drawBomb() {
+      const cx = Math.round(ball.x + ball.size / 2), cy = Math.round(ball.y + ball.size / 2);
+      const px = 3, half = 12; // 8칸 × 3픽셀 = 24픽셀
+      const red = bomb.time < 1 && Math.floor(bomb.time * 12) % 2 === 0;
+      drawPixelArt(BOMB_BODY, cx - half, cy - half, px, red ? "#ff3355" : "#4a4a5e");
+      ctx.fillStyle = red ? "#ffd6e7" : "#9a9ab5"; // 반짝이는 부분
+      ctx.fillRect(cx - half + px * 2, cy - half + px * 2, px * 2, px);
+      ctx.fillRect(cx - half + px * 2, cy - half + px * 3, px, px);
+      ctx.fillStyle = "#b0723f"; // 심지
+      ctx.fillRect(cx + px * 2, cy - half - px * 2, px, px * 2);
+      ctx.fillStyle = FIRE_COLORS[Math.floor(Math.random() * FIRE_COLORS.length)]; // 불꽃
+      ctx.fillRect(cx + px * 2 + Math.round((Math.random() - 0.5) * 4) - 1, cy - half - px * 4 + Math.round((Math.random() - 0.5) * 4), 4, 4);
+      // 남은 초
+      ctx.font = '16px "Press Start 2P", monospace';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const label = String(Math.max(1, Math.ceil(bomb.time)));
+      const ly = cy - half - 26;
+      ctx.fillStyle = "#000";
+      ctx.fillText(label, cx + 2, ly + 2);
+      ctx.fillStyle = bomb.time < 1 ? "#ff3355" : "#fff";
+      ctx.fillText(label, cx, ly);
+    }
+
+    // 성공 구역 : 그 위쪽을 아주 옅은 노란빛으로 칠하고, 아래 끝에 노란 점선 + "BOMB ZONE"
+    function drawBombZone() {
+      if (bomb.time <= 0) return;
+      const y = Math.min(bombZoneY(), H);
+      ctx.fillStyle = "rgba(255, 225, 77, 0.06)";
+      ctx.fillRect(WALL, 51, W - WALL * 2, y - 51);
+      ctx.strokeStyle = "#ffe14d";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(WALL, y);
+      ctx.lineTo(W - WALL, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '8px "Press Start 2P", monospace';
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "#ffe14d";
+      ctx.fillText("BOMB ZONE", W - WALL - 4, y - 4);
+    }
+
+    // 예수님이 공을 꺼내 줘요 : 바닥에서 빛기둥이 솟고, 공이 위로 다시 올라가요
+    function rescueBall() {
+      jesusSave = false;
+      ball.y = H - ball.size - 6;
+      const angle = (Math.random() - 0.5) * (Math.PI / 4);
+      ball.vx = ballSpeed() * Math.sin(angle);
+      ball.vy = -ballSpeed() * Math.cos(angle);
+      fx.beams.push({ x: ball.x + ball.size / 2, life: 0.6, max: 0.6 });
+      burst(ball.x + ball.size / 2, H - 10, 20, ["#fff3c4", "#ffd98a", "#fff"], 60, 200, -100);
+      floatText("SAVED!", ball.x + ball.size / 2, H - 60, "#fff3c4");
+      showFigure("jesus");
+    }
+
+    // 예수님 보호가 남아 있으면 바닥에 금빛 안전선이 은은하게 깜빡여요
+    function drawSaveLine() {
+      if (!jesusSave) return;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 200);
+      ctx.fillStyle = "#ffd98a";
+      ctx.fillRect(WALL, H - 4, W - WALL * 2, 3);
+      ctx.globalAlpha = 1;
+    }
+
+    const GHOST_TIME = 8;   // 공이 투명한 시간
+    const timers = { shrink: 0, speed: 0, big: 0, hole: 0, gun: 0, ghost: 0 };
+
+    // 투명한 공이 얼마나 보이는지 (0 = 안 보임, 1 = 다 보임)
+    //   패들에서 GHOST_FAR 보다 멀면 안 보이고, GHOST_NEAR 까지 가까워지면서 서서히 선명해져요
+    const GHOST_FAR = 230;
+    const GHOST_NEAR = 40;
+    function ballVisibility() {
+      if (timers.ghost <= 0 || !ball.launched) return 1;
+      const gap = paddle.y - (ball.y + ball.size);
+      return Math.min(1, Math.max(0, (GHOST_FAR - gap) / (GHOST_FAR - GHOST_NEAR)));
+    }
+
+    // 총 : 스페이스를 누르면 패들 양 끝 포신에서 총알 2발이 올라가요. 누르고 있으면 연달아 쏴요
+    //   총알 하나가 벽돌 하나를 깨고 사라져요. 공은 그대로 움직여요
+    const BULLET_SPEED = 620;
+    const FIRE_GAP = 0.18;  // 연사 간격 (초)
+    let bullets = [];
+    let fireCooldown = 0;
+
+    function cannonXs() {
+      return [paddle.x + 3, paddle.x + paddle.w - 9]; // 포신 왼쪽 x (폭 6)
+    }
+
+    function updateGun(dt) {
+      fireCooldown -= dt;
+      if (timers.gun > 0 && ball.launched && keys.fire && fireCooldown <= 0) {
+        cannonXs().forEach((x) => bullets.push({ x: x + 1, y: paddle.y - 18 }));
+        fireCooldown = FIRE_GAP;
+        fx.muzzle = 0.06;
+        playPew();
+      }
+      bullets.forEach((bl) => { bl.y -= BULLET_SPEED * dt; });
+      bullets = bullets.filter((bl) => {
+        if (bl.y < 51) return false; // 천장
+        const b = bricks.find((o) => o.alive && bl.x < o.x + BRICK_W && bl.x + 4 > o.x && bl.y < o.y + BRICK_H && bl.y + 10 > o.y);
+        if (!b) return true;
+        b.alive = false;
+        score += b.points;
+        playBrick(b.row);
+        burst(bl.x + 2, b.y + BRICK_H, 8, [b.color, "#eaffc2", "#fff"], 60, 180, 300);
+        checkSpecial(b);
+        return false;
+      });
+    }
+
+    function drawGun() {
+      bullets.forEach((bl) => {
+        ctx.fillStyle = "#eaffc2";
+        ctx.fillRect(bl.x, bl.y, 4, 10);
+        ctx.fillStyle = "#b6ff3d";
+        ctx.fillRect(bl.x, bl.y + 6, 4, 4);
+      });
+      if (timers.gun <= 0 || timerBlink("gun")) return;
+      cannonXs().forEach((x) => {
+        ctx.fillStyle = "#b6ff3d";
+        ctx.fillRect(x, paddle.y - 8, 6, 8);
+        ctx.fillStyle = "#4a7a10";
+        ctx.fillRect(x + 4, paddle.y - 8, 2, 8);
+        if (fx.muzzle > 0) { // 쏘는 순간 포신 끝이 번쩍
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(x - 2, paddle.y - 14, 10, 6);
+        }
+      });
+    }
+
+    function playPew() {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(1200, t);
+      osc.frequency.exponentialRampToValueAtTime(300, t + 0.08);
+      env.gain.setValueAtTime(0.06, t);
+      env.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+
+    // 벽 : 게임 화면 양옆에 벽돌로 쌓은 벽이 있어요. 공은 이 벽에서 튕겨요
+    // 벽 구멍 : 벌칙 벽돌을 깨면 한쪽 벽이 와르르 무너져서 구멍이 나요. 오락기 테두리까지 뚫려요
+    //   공이 그 구멍으로 들어가면 정말로 화면 밖으로 튀어나가 떨어지고, 목숨이 하나 줄어요
+    //   side = -1 왼쪽 벽, 1 오른쪽 벽. y = 구멍 위쪽, HOLE_H = 구멍 높이
+    const WALL = 6;        // 벽 두께
+    const WALL_BRICK = 12; // 벽돌 한 장 높이
+    const HOLE_H = 70;
+    const hole = { side: -1, y: 0 };
+
+    function openHole() {
+      timers.hole = HOLE_TIME;
+      hole.side = Math.random() < 0.5 ? -1 : 1;
+      // 벽돌 아래부터 패들 조금 위 사이에서 무작위 (벽돌 한 장 단위로 맞춰요)
+      const top = 220, bottom = paddle.y - 60 - HOLE_H;
+      hole.y = Math.round((top + Math.random() * (bottom - top)) / WALL_BRICK) * WALL_BRICK + 3;
+      // 무너진 벽돌 조각이 안쪽으로 쏟아지고, 먼지가 피어올라요
+      const wx = hole.side === -1 ? WALL : W - WALL;
+      for (let i = 0; i < 14; i++) {
+        const life = 0.7 + Math.random() * 0.5;
+        fx.particles.push({
+          x: wx, y: hole.y + Math.random() * HOLE_H,
+          vx: -hole.side * (60 + Math.random() * 160), vy: -80 + Math.random() * 60,
+          gravity: 700, life, max: life,
+          color: Math.random() < 0.5 ? "#3a3a78" : "#5a5aa0",
+          size: Math.random() < 0.5 ? 6 : 4,
+        });
+      }
+      burst(wx, hole.y + HOLE_H / 2, 16, ["#777", "#999", "#555"], 20, 80, -40);
+      fx.shake = Math.max(fx.shake, 0.35);
+      playBoom();
+    }
+
+    // 공 가운데가 구멍 높이에 있으면 그쪽 벽에서 튕기지 않고 빠져나가요
+    function ballInHole(side) {
+      if (timers.hole <= 0 || hole.side !== side) return false;
+      const cy = ball.y + ball.size / 2;
+      return cy > hole.y && cy < hole.y + HOLE_H;
+    }
+
+    // 양옆 벽 : 벽돌 무늬. 구멍이 난 자리는 비워 두고, 끝은 들쭉날쭉 깨진 모양
+    function drawWalls() {
+      [-1, 1].forEach((side) => {
+        const x = side === -1 ? 0 : W - WALL;
+        const holeHere = timers.hole > 0 && hole.side === side;
+        for (let y = 51; y < H; y += WALL_BRICK) {
+          if (holeHere && y + WALL_BRICK > hole.y && y < hole.y + HOLE_H) continue;
+          ctx.fillStyle = "#3a3a78";
+          ctx.fillRect(x, y, WALL, WALL_BRICK - 2);
+          ctx.fillStyle = "#5a5aa0"; // 벽돌 윗면
+          ctx.fillRect(x, y, WALL, 2);
+        }
+        if (!holeHere) return;
+        // 깨진 끝 : 구멍 위·아래로 벽돌 반쪽이 삐죽
+        ctx.fillStyle = "#3a3a78";
+        ctx.fillRect(side === -1 ? 0 : W - 3, hole.y - 4, 3, 4);
+        ctx.fillRect(side === -1 ? 0 : W - 4, hole.y + HOLE_H, 4, 3);
+      });
+    }
+
+    // 오락기 테두리에도 구멍 (페이지 위에 그려요) : 테두리가 뚫려서 바깥 배경이 보여요
+    function drawHoleOverlay() {
+      if (timers.hole <= 0) return;
+      const r = canvas.getBoundingClientRect();
+      const box = document.querySelector(".cabinet").getBoundingClientRect();
+      const [, top] = gameToPage(0, hole.y);
+      const [, bottom] = gameToPage(0, hole.y + HOLE_H);
+      const x0 = hole.side === -1 ? box.left - 5 : r.right;
+      const x1 = hole.side === -1 ? r.left : box.right + 13;
+      frontCtx.fillStyle = "#0b0b1a";
+      frontCtx.fillRect(x0, top, x1 - x0, bottom - top);
+      // 깨진 가장자리 : 테두리 조각이 들쭉날쭉 (매번 같은 모양)
+      frontCtx.fillStyle = "#ff2e88";
+      for (let i = 0; i < 5; i++) {
+        const w = (x1 - x0) / 5;
+        const jag = 3 + ((i * 5) % 6);
+        frontCtx.fillRect(x0 + i * w, top - 1, w, jag);
+        frontCtx.fillRect(x0 + i * w, bottom - jag + 1, w, jag);
+      }
+    }
+
+    // 구멍으로 나간 공 : 페이지 위에서 계속 날아가다 아래로 떨어져요 (페이지 좌표)
+    const escape = { x: 0, y: 0, vx: 0, vy: 0, size: 0, t: 0 };
+    function startEscape() {
+      const r = canvas.getBoundingClientRect();
+      const scale = r.width / W;
+      [escape.x, escape.y] = gameToPage(ball.x, ball.y);
+      escape.vx = ball.vx * scale;
+      escape.vy = ball.vy * scale;
+      escape.size = ball.size * scale;
+      escape.t = 0;
+      ball.escaping = true;
+      playFall();
+    }
+
+    function updateEscape(dt) {
+      escape.t += dt;
+      escape.vy += 1500 * dt; // 중력
+      escape.x += escape.vx * dt;
+      escape.y += escape.vy * dt;
+      if (escape.t > 1.3 || escape.y > window.innerHeight + 60) {
+        ball.escaping = false;
+        loseLife();
+      }
+    }
+
+    // 떨어지는 공 : 빙글빙글 돌면서
+    function drawEscape() {
+      if (!ball.escaping) return;
+      frontCtx.save();
+      frontCtx.translate(escape.x + escape.size / 2, escape.y + escape.size / 2);
+      frontCtx.rotate(escape.t * 9);
+      const s = escape.size;
+      if (timers.big > 0) {
+        [["#ff3d1a", 1], ["#ff7a1a", 0.75], ["#ffd23f", 0.5], ["#fff3b0", 0.25]].forEach(([color, k]) => {
+          frontCtx.fillStyle = color;
+          frontCtx.fillRect(-s * k / 2, -s * k / 2, s * k, s * k);
+        });
+      } else {
+        frontCtx.fillStyle = timers.speed > 0 ? "#bff3ff" : "#fff";
+        frontCtx.fillRect(-s / 2, -s / 2, s, s);
+      }
+      frontCtx.restore();
+    }
+
+    // 페이지 위 그림판 두 장을 매 화면 새로 그려요 : 고양이, 테두리 구멍, 떨어지는 공
+    function drawOverlay() {
+      fitLayer(catBack);
+      fitLayer(catFront);
+      clearCatLayers();
+      drawHoleOverlay();
+      drawCatLayers();
+      drawEscape();
+    }
+
+    // 떨어지는 소리 : "삐유우~" 높은 음에서 낮은 음으로
+    function playFall() {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(900, t);
+      osc.frequency.exponentialRampToValueAtTime(150, t + 0.9);
+      env.gain.setValueAtTime(0.05, t);
+      env.gain.linearRampToValueAtTime(0, t + 0.9);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t);
+      osc.stop(t + 0.92);
+    }
+
+    const PADDLE_W = 80;       // 원래 패들 길이
+    const PADDLE_SHORT_W = 28; // 짧아진 길이
+    const BALL_SIZE = 10;      // 원래 공 크기
+    const BIG_BALL_SIZE = 32;  // 불덩어리 크기
+    const BLAST_RANGE = 1;     // 불덩어리에 맞은 벽돌 둘레 몇 칸까지 같이 터지는지 (1 = 가로·세로·대각선 바로 옆)
+    const FIRE_COLORS = ["#fff3b0", "#ffd23f", "#ff7a1a", "#ff3d1a"];
+    const FAST_MUL = 1.7;      // 빨라질 때 몇 배
+
+    function ballSpeed() {
+      return BALL_SPEED * (timers.speed > 0 ? FAST_MUL : 1);
+    }
+    // 방향은 그대로 두고 빠르기만 지금 상태에 맞춰요
+    function setBallSpeed() {
+      const len = Math.hypot(ball.vx, ball.vy);
+      if (len === 0) return;
+      ball.vx = ball.vx / len * ballSpeed();
+      ball.vy = ball.vy / len * ballSpeed();
+    }
+
+    // 끝날 때 알려주는 글씨
+    function endTimer(name) {
+      if (name === "shrink") {
+        burst(paddle.x + paddle.w / 2, paddle.y, 12, ["#e0e0ff", "#fff"], 60, 140, 0);
+        floatText("BACK!", paddle.x + paddle.w / 2, paddle.y - 16, "#e0e0ff");
+      } else if (name === "speed") {
+        setBallSpeed();
+        floatText("SLOW DOWN", ball.x + ball.size / 2, ball.y - 16, "#bff3ff");
+      } else if (name === "big") {
+        burst(ball.x + ball.size / 2, ball.y + ball.size / 2, 12, ["#888", "#555"], 20, 80, -80); // 불이 꺼지며 연기
+        floatText("FIRE OUT", ball.x + ball.size / 2, ball.y - 16, "#ffd23f");
+      } else if (name === "hole") {
+        // 벽이 다시 막혀요 (작은 반짝이만)
+        const wx = hole.side === -1 ? WALL : W - WALL;
+        burst(wx, hole.y + HOLE_H / 2, 10, ["#5a5aa0", "#fff"], 30, 90, 0);
+      } else if (name === "ghost") {
+        burst(ball.x + ball.size / 2, ball.y + ball.size / 2, 12, ["#fff", "#e0e0f0"], 40, 120, 0);
+        floatText("VISIBLE", ball.x + ball.size / 2, ball.y - 16, "#e0e0f0");
+      } else if (name === "gun") {
+        floatText("GUN OFF", paddle.x + paddle.w / 2, paddle.y - 24, "#b6ff3d");
+      }
+    }
+
+    // 패들 길이와 공 크기는 한 번에 바뀌지 않고 스르륵 바뀌어요. 가운데는 그대로
+    function updateTimers(dt, tick) {
+      if (tick) {
+        for (const name of Object.keys(timers)) {
+          if (timers[name] <= 0) continue;
+          timers[name] -= dt;
+          if (timers[name] <= 0) { timers[name] = 0; endTimer(name); }
+        }
+      }
+      const pTarget = timers.shrink > 0 ? PADDLE_SHORT_W : PADDLE_W;
+      const pCenter = paddle.x + paddle.w / 2;
+      paddle.w += (pTarget - paddle.w) * Math.min(1, dt * 10);
+      if (Math.abs(pTarget - paddle.w) < 0.5) paddle.w = pTarget;
+      paddle.x = pCenter - paddle.w / 2;
+
+      const bTarget = timers.big > 0 ? BIG_BALL_SIZE : BALL_SIZE;
+      const bx = ball.x + ball.size / 2;
+      const by = ball.y + ball.size / 2;
+      ball.size += (bTarget - ball.size) * Math.min(1, dt * 10);
+      if (Math.abs(bTarget - ball.size) < 0.5) ball.size = bTarget;
+      ball.x = bx - ball.size / 2;
+      ball.y = by - ball.size / 2;
+    }
+
+    // 끝나기 2초 전부터 깜빡여서 곧 돌아온다고 알려줘요
+    function timerBlink(name) {
+      return timers[name] > 0 && timers[name] < 2 && Math.floor(timers[name] * 8) % 2 === 0;
+    }
+
+    // ---------------------------------------------------------
+    // 테트리스 이벤트 : 물음표 벽돌을 깨면 20초 동안 공이 멈추고, 아래에서 테트리스 조각이 올라와요
+    //   조각은 위로 올라가다가 벽돌이나 천장에 닿으면 그 자리에 붙어서 벽돌이 돼요
+    //   가로 한 줄(8칸)이 꽉 차면 그 줄이 사라지고 +100점, 그 아래 벽돌들이 한 칸씩 올라와요
+    //   ← → 이동, 스페이스 회전, ↑ 누르고 있으면 빨리 올라가요
+    // 벽돌 자리와 똑같은 칸(가로 8칸)을 써서, 테트리스로 쌓은 조각이 그대로 벽돌깨기 벽돌이 돼요
+    const CELL_W = BRICK_W + GAP;
+    const CELL_H = BRICK_H + GAP;
+    const GRID_ROWS = 16;        // 칸 줄 수 (벽돌 맨 윗줄부터 패들 조금 위까지)
+    const TETRIS_TIME = 20;      // 이벤트 시간 (초)
+    const RISE_INTERVAL = 0.45;  // 조각이 한 칸 올라가는 간격 (초)
+    const FAST_INTERVAL = 0.05;  // ↑ 를 누르고 있을 때 간격
+    const PIECES = [
+      { color: "#2ec8ff", cells: [[0, 0], [0, 1], [0, 2], [0, 3]] }, // I
+      { color: "#ffe14d", cells: [[0, 0], [0, 1], [1, 0], [1, 1]], noTurn: true }, // O
+      { color: "#b04dff", cells: [[0, 0], [0, 1], [0, 2], [1, 1]] }, // T
+      { color: "#2ee86b", cells: [[0, 1], [0, 2], [1, 0], [1, 1]] }, // S
+      { color: "#ff3355", cells: [[0, 0], [0, 1], [1, 1], [1, 2]] }, // Z
+      { color: "#3b6bff", cells: [[0, 0], [1, 0], [1, 1], [1, 2]] }, // J
+      { color: "#ffb000", cells: [[0, 2], [1, 0], [1, 1], [1, 2]] }, // L
+    ];
+
+    // piece = 지금 움직이는 조각 { cells: [[줄, 칸], ...], color, noTurn }
+    const tetris = { active: false, time: 0, piece: null, riseTimer: 0 };
+
+    function cellBlocked(r, c) {
+      if (r < 0 || r >= GRID_ROWS || c < 0 || c >= COLS) return true;
+      return bricks.some((b) => b.alive && b.row === r && b.col === c);
+    }
+    function fits(cells) {
+      return cells.every(([r, c]) => !cellBlocked(r, c));
+    }
+
+    // 새 조각 : 맨 아랫줄에서 가운데쯤 나와요. 나올 자리가 막혔으면 false
+    function spawnPiece() {
+      const p = PIECES[Math.floor(Math.random() * PIECES.length)];
+      const height = Math.max(...p.cells.map(([r]) => r)) + 1;
+      const width = Math.max(...p.cells.map(([, c]) => c)) + 1;
+      const r0 = GRID_ROWS - height;
+      const c0 = Math.floor((COLS - width) / 2);
+      const cells = p.cells.map(([r, c]) => [r + r0, c + c0]);
+      if (!fits(cells)) return false;
+      tetris.piece = { cells, color: p.color, noTurn: p.noTurn };
+      return true;
+    }
+
+    function movePiece(dr, dc) {
+      const moved = tetris.piece.cells.map(([r, c]) => [r + dr, c + dc]);
+      if (!fits(moved)) return false;
+      tetris.piece.cells = moved;
+      return true;
+    }
+
+    // 회전 : 두 번째 칸을 중심으로 90도. 벽에 걸리면 옆으로 한두 칸 밀어서 다시 해봐요
+    function rotatePiece() {
+      const p = tetris.piece;
+      if (p.noTurn) return;
+      const [pr, pc] = p.cells[1];
+      const turned = p.cells.map(([r, c]) => [pr + (c - pc), pc - (r - pr)]);
+      for (const kick of [0, -1, 1, -2, 2]) {
+        const kicked = turned.map(([r, c]) => [r, c + kick]);
+        if (fits(kicked)) { p.cells = kicked; return; }
+      }
+    }
+
+    // 조각을 그 자리에 벽돌로 붙여요
+    function lockPiece() {
+      const rows = [...new Set(tetris.piece.cells.map(([r]) => r))];
+      tetris.piece.cells.forEach(([r, c]) => {
+        bricks.push({
+          row: r, col: c,
+          x: LEFT + c * CELL_W, y: TOP + r * CELL_H,
+          color: tetris.piece.color, points: 10, alive: true,
+        });
+      });
+      tetris.piece = null;
+      clearLines(rows);
+    }
+
+    // 꽉 찬 줄 지우기 : 줄이 사라지면 그 아래 벽돌들이 한 칸씩 올라와요 (거꾸로 된 테트리스라서 위가 바닥)
+    //   진짜 테트리스처럼 방금 붙은 조각이 걸친 줄만 봐요 (처음부터 꽉 차 있던 원래 벽돌 줄은 안 지워져요)
+    //   아래 줄부터 지워야 올라오는 줄 번호가 꼬이지 않아요
+    function clearLines(rows) {
+      for (const r of rows.sort((a, b) => b - a)) {
+        const rowBricks = bricks.filter((b) => b.alive && b.row === r);
+        if (rowBricks.length < COLS) continue;
+        rowBricks.forEach((b) => { b.alive = false; });
+        score += 100;
+        burst(W / 2, TOP + r * CELL_H + BRICK_H / 2, 30, ["#fff", "#ffe14d", "#2ec8ff"], 120, 320, 200);
+        floatText("LINE! +100", W / 2, TOP + r * CELL_H, "#ffe14d");
+        fx.shake = 0.2;
+        bricks.forEach((b) => {
+          if (b.alive && b.row > r) { b.row -= 1; b.y = TOP + b.row * CELL_H; }
+        });
+      }
+    }
+
+    function startTetris() {
+      tetris.active = true;
+      tetris.time = TETRIS_TIME;
+      tetris.riseTimer = 0;
+      keys.left = keys.right = keys.up = false;
+      cancelBomb();
+      // 공은 패들 위로 돌아가서 기다려요
+      ball.launched = false;
+      ball.x = paddle.x + paddle.w / 2 - ball.size / 2;
+      ball.y = paddle.y - ball.size - 4;
+      if (!spawnPiece()) { endTetris(); return; }
+      playTetrisMusic();
+    }
+
+    function endTetris() {
+      if (tetris.piece) lockPiece(); // 움직이던 조각은 그 자리에 벽돌로 남아요
+      tetris.active = false;
+      stopTetrisMusic();
+      floatText("BREAKOUT!", W / 2, H / 2, "#2ee86b");
+      fx.flash = 0.15;
+      fx.flashColor = "46, 232, 107";
+      if (!bricks.some((b) => b.alive)) showEnd(true);
+    }
+
+    function updateTetris(dt) {
+      tetris.time -= dt;
+      if (tetris.time <= 0) { endTetris(); return; }
+      tetris.riseTimer += dt;
+      const interval = keys.up ? FAST_INTERVAL : RISE_INTERVAL;
+      while (tetris.active && tetris.riseTimer >= interval) {
+        tetris.riseTimer -= interval;
+        if (!movePiece(-1, 0)) {
+          lockPiece();
+          if (!spawnPiece()) { endTetris(); return; } // 나올 자리가 없으면 일찍 끝나요
+        }
+      }
+    }
+
+    // 테트리스 키 : 이벤트 중에는 패들 대신 조각을 움직여요
+    function tetrisKey(key) {
+      if (!tetris.piece) return;
+      if (key === "ArrowLeft") movePiece(0, -1);
+      if (key === "ArrowRight") movePiece(0, 1);
+      if (key === " ") rotatePiece();
+    }
+
+    function drawTetris() {
+      if (!tetris.active) return;
+      // 칸 모눈 (희미하게)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+      ctx.lineWidth = 1;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          ctx.strokeRect(LEFT + c * CELL_W + 0.5, TOP + r * CELL_H + 0.5, BRICK_W - 1, BRICK_H - 1);
+        }
+      }
+      // 움직이는 조각
+      if (tetris.piece) {
+        tetris.piece.cells.forEach(([r, c]) => {
+          drawBrick({ x: LEFT + c * CELL_W, y: TOP + r * CELL_H, color: tetris.piece.color });
+        });
+      }
+      // 남은 시간
+      ctx.font = '14px "Press Start 2P", monospace';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ffe14d";
+      ctx.fillText("TETRIS " + Math.ceil(tetris.time), W / 2, 478);
+      ctx.fillRect(LEFT, 492, (W - LEFT * 2) * (tetris.time / TETRIS_TIME), 4);
+    }
+
+    // ---------------------------------------------------------
+    // 테트리스 음악 : 원곡인 러시아 민요 "코로베이니키"를 브라우저가 직접 연주해요 (오디오 파일 없음)
+    //   네모 파형(square) = 옛날 게임기 소리. 한 바퀴가 약 10초라서, 이벤트 시간만큼 되풀이해요
+    const BEAT = 0.3; // 한 박자 (초)
+    // [음, 박자 수] : null 은 쉼표
+    const MELODY = [
+      ["E5", 1], ["B4", 0.5], ["C5", 0.5], ["D5", 1], ["C5", 0.5], ["B4", 0.5],
+      ["A4", 1], ["A4", 0.5], ["C5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5],
+      ["B4", 1.5], ["C5", 0.5], ["D5", 1], ["E5", 1],
+      ["C5", 1], ["A4", 1], ["A4", 1], [null, 1],
+      ["D5", 1.5], ["F5", 0.5], ["A5", 1], ["G5", 0.5], ["F5", 0.5],
+      ["E5", 1.5], ["C5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5],
+      ["B4", 1], ["B4", 0.5], ["C5", 0.5], ["D5", 1], ["E5", 1],
+      ["C5", 1], ["A4", 1], ["A4", 1], [null, 1],
+    ];
+    const BASS_ROOTS = ["E", "A", "E", "A", "D", "C", "E", "A"]; // 마디마다 낮은 음 (8분음표로 위아래 옥타브를 오가요)
+
+    // 브라우저는 키를 누른 뒤에만 소리를 낼 수 있어서, 키를 누를 때 준비해 둬요
+    // 모든 소리는 master(전체 볼륨)를 지나서 스피커로 가요. 소리 끄기 = master 볼륨을 0 으로
+    let audioCtx = null;
+    let musicGain = null;
+    let master = null;
+    let muted = false;
+    try { muted = localStorage.getItem("brick-muted") === "1"; } catch (e) {}
+    function ensureAudio() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx && AC) {
+        audioCtx = new AC();
+        master = audioCtx.createGain();
+        master.gain.value = muted ? 0 : 1;
+        master.connect(audioCtx.destination);
+      }
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    }
+
+    // 소리 켜기/끄기 : 버튼이나 M 키. 브라우저가 기억해 둬요
+    const soundBtn = document.getElementById("sound-btn");
+    function showSoundBtn() {
+      soundBtn.textContent = muted ? "🔇 SOUND OFF" : "🔊 SOUND ON";
+      soundBtn.setAttribute("aria-pressed", String(!muted));
+    }
+    function toggleSound() {
+      muted = !muted;
+      try { localStorage.setItem("brick-muted", muted ? "1" : "0"); } catch (e) {}
+      ensureAudio();
+      if (master) master.gain.setValueAtTime(muted ? 0 : 1, audioCtx.currentTime);
+      showSoundBtn();
+    }
+    soundBtn.addEventListener("click", (e) => { toggleSound(); e.currentTarget.blur(); });
+    showSoundBtn();
+
+    // "A4", "C#5" → 주파수(Hz)
+    function noteFreq(name) {
+      const steps = { C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2 };
+      const octave = Number(name.slice(-1));
+      const sharp = name[1] === "#" ? 1 : 0;
+      return 440 * Math.pow(2, (steps[name[0]] + sharp + (octave - 4) * 12) / 12);
+    }
+
+    // out = 소리를 보낼 곳 (안 주면 테트리스 음악 볼륨)
+    function playNote(type, freq, start, length, volume, out = musicGain) {
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      env.gain.setValueAtTime(0, start);
+      env.gain.linearRampToValueAtTime(volume, start + 0.01);
+      env.gain.setValueAtTime(volume, start + length - 0.03);
+      env.gain.linearRampToValueAtTime(0, start + length);
+      osc.connect(env);
+      env.connect(out);
+      osc.start(start);
+      osc.stop(start + length);
+    }
+
+    function playTetrisMusic() {
+      ensureAudio();
+      if (!audioCtx) return;
+      stopTetrisMusic();
+      musicGain = audioCtx.createGain();
+      musicGain.gain.value = 0.08; // 전체 소리 크기
+      musicGain.connect(master);
+      // 한 바퀴(8마디 = 32박자)를 이벤트 시간이 끝날 때까지 되풀이해요
+      const loopLength = BASS_ROOTS.length * 4 * BEAT;
+      const loops = Math.ceil(TETRIS_TIME / loopLength);
+      for (let n = 0; n < loops; n++) {
+        const t0 = audioCtx.currentTime + 0.05 + n * loopLength;
+        let t = t0;
+        MELODY.forEach(([note, beats]) => {
+          if (note) playNote("square", noteFreq(note), t, beats * BEAT * 0.9, 0.6);
+          t += beats * BEAT;
+        });
+        BASS_ROOTS.forEach((root, bar) => {
+          for (let i = 0; i < 8; i++) {
+            const note = root + (i % 2 === 0 ? "2" : "3");
+            playNote("triangle", noteFreq(note), t0 + (bar * 4 + i * 0.5) * BEAT, BEAT * 0.45, 0.9);
+          }
+        });
+      }
+    }
+
+    // 이벤트가 일찍 끝나도 음악이 바로 멈추게 : 소리를 0.1초 만에 줄이고 연결을 끊어요
+    function stopTetrisMusic() {
+      if (!musicGain || !audioCtx) return;
+      const g = musicGain;
+      musicGain = null;
+      g.gain.setValueAtTime(g.gain.value, audioCtx.currentTime);
+      g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+      setTimeout(() => g.disconnect(), 200);
+    }
+
+    // ---------------------------------------------------------
+    // 효과음 : 남극탐험 느낌의 짧은 "삑" 소리들
+    // f0 에서 f1 으로 미끄러지는 짧은 음. delay = 몇 초 뒤에 낼지
+    function blip(type, f0, f1, length, volume, delay = 0) {
+      ensureAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime + delay;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(f1, t + length);
+      env.gain.setValueAtTime(volume, t);
+      env.gain.exponentialRampToValueAtTime(0.001, t + length);
+      osc.connect(env);
+      env.connect(master);
+      osc.start(t);
+      osc.stop(t + length + 0.02);
+    }
+
+    // 짧은 멜로디 : notes = [[음, 박자], ...] (null 은 쉼표). 다 연주하는 데 걸리는 시간(초)을 돌려줘요
+    function playJingle(notes, beat, type = "square", volume = 0.08, delay = 0) {
+      ensureAudio();
+      if (!audioCtx) return 0;
+      const out = audioCtx.createGain();
+      out.gain.value = volume;
+      out.connect(master);
+      let t = audioCtx.currentTime + delay;
+      notes.forEach(([note, beats]) => {
+        if (note) playNote(type, noteFreq(note), t, beats * beat * 0.9, 1, out);
+        t += beats * beat;
+      });
+      const total = t - audioCtx.currentTime;
+      setTimeout(() => out.disconnect(), (total + 0.5) * 1000);
+      return total;
+    }
+
+    function playPaddle() { blip("square", 520, 1040, 0.08, 0.07); }  // "뿅" (펭귄 점프 느낌)
+    function playWall() { blip("square", 240, 200, 0.04, 0.04); }     // "똑"
+    const ROW_PITCH = [1320, 1100, 880, 740]; // 위쪽 줄일수록 높은 음
+    function playBrick(row) {                                          // "삑"
+      const f = ROW_PITCH[row] || 660;
+      blip("square", f, f * 1.02, 0.07, 0.06);
+    }
+    function playSparkle() {                                           // "띠링" 특수 벽돌 등장
+      blip("sine", 1568, 1568, 0.08, 0.08);
+      blip("sine", 2093, 2093, 0.16, 0.08, 0.07);
+    }
+    function playGood() {                                              // "따라랑" 상
+      playJingle([["C5", 1], ["E5", 1], ["G5", 1], ["C6", 3]], 0.06);
+    }
+    function playBad() {                                               // "뿌우웅" 벌
+      blip("sawtooth", 320, 70, 0.45, 0.07);
+      blip("square", 160, 60, 0.45, 0.04);
+    }
+    function playMiss() {                                              // "뚜루루" 공을 놓쳤을 때
+      playJingle([["G4", 1], ["E4", 1], ["C4", 1], ["G3", 3]], 0.08);
+    }
+    function playGameOver(delay = 0) {
+      return playJingle([["E4", 2], ["D#4", 2], ["D4", 2], ["C#4", 2], ["C4", 6]], 0.12, "triangle", 0.25, delay);
+    }
+    function playClear() {
+      return playJingle([["G4", 1], ["C5", 1], ["E5", 1], ["G5", 2], ["E5", 1], ["G5", 4]], 0.11);
+    }
+    function playTick() { blip("square", 1200, 1200, 0.03, 0.03); }  // "띡" 점수 올라가는 소리
+    function playDing() {                                             // "딩!" 점수 다 올라갔을 때
+      blip("sine", 1760, 1760, 0.6, 0.12);
+      blip("sine", 2637, 2637, 0.4, 0.05);
+    }
+
+    // ---------------------------------------------------------
+    // 이펙트 : 도트 조각(particles), 떠오르는 글씨(texts), 화면 번쩍(flash, flashColor), 점수판 하트 커지기(hudPop), 화면 흔들림(shake)
+    // rings = 폭발할 때 퍼지는 충격파
+    // beams = 예수님이 공을 꺼낼 때 바닥에서 솟는 빛기둥
+    const fx = { particles: [], texts: [], rings: [], beams: [], flash: 0, flashColor: "255, 46, 136", hudPop: 0, shake: 0, muzzle: 0 };
+
+    // gravity : 아래로 끌어당기는 힘 (음수면 위로 떠올라요)
+    function burst(x, y, count, colors, minSpeed, maxSpeed, gravity) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+        const life = 0.5 + Math.random() * 0.5;
+        fx.particles.push({
+          x, y, gravity, life, max: life,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[i % colors.length],
+          size: Math.random() < 0.5 ? 4 : 3,
+        });
+      }
+    }
+
+    function floatText(text, x, y, color) {
+      fx.texts.push({ text, x, y, color, life: 1 });
+    }
+
+    function updateEffects(dt) {
+      fx.particles.forEach((p) => {
+        p.vy += p.gravity * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+      });
+      fx.particles = fx.particles.filter((p) => p.life > 0);
+      fx.texts.forEach((t) => { t.y -= 40 * dt; t.life -= dt; });
+      fx.texts = fx.texts.filter((t) => t.life > 0);
+      fx.rings.forEach((r) => { r.life -= dt; });
+      fx.rings = fx.rings.filter((r) => r.life > 0);
+      fx.beams.forEach((b) => { b.life -= dt; });
+      fx.beams = fx.beams.filter((b) => b.life > 0);
+      if (figure.type) figure.t += dt;
+      fx.flash = Math.max(0, fx.flash - dt);
+      fx.hudPop = Math.max(0, fx.hudPop - dt);
+      fx.shake = Math.max(0, fx.shake - dt);
+      fx.muzzle = Math.max(0, fx.muzzle - dt);
+    }
+
+    function drawEffects() {
+      // 빛기둥 : 바닥에서 위로 금빛 기둥이 솟았다가 옅어져요
+      fx.beams.forEach((b) => {
+        const k = b.life / b.max;
+        ctx.globalAlpha = k * 0.6;
+        ctx.fillStyle = "#fff3c4";
+        ctx.fillRect(b.x - 14, 51, 28, H - 51);
+        ctx.globalAlpha = k;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(b.x - 4, 51, 8, H - 51);
+      });
+      ctx.globalAlpha = 1;
+      drawFigure();
+      // 충격파 : 주황 고리가 커지면서 옅어져요
+      fx.rings.forEach((r) => {
+        const k = 1 - r.life / r.max;
+        ctx.globalAlpha = 1 - k;
+        ctx.strokeStyle = k < 0.3 ? "#fff3b0" : "#ff7a1a";
+        ctx.lineWidth = 6 * (1 - k) + 2;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 10 + k * 70, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      fx.particles.forEach((p) => {
+        ctx.globalAlpha = Math.max(0, p.life / p.max);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      });
+      ctx.font = '12px "Press Start 2P", monospace';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      fx.texts.forEach((t) => {
+        ctx.globalAlpha = Math.max(0, t.life);
+        ctx.fillStyle = "#000";
+        ctx.fillText(t.text, t.x + 2, t.y + 2);
+        ctx.fillStyle = t.color;
+        ctx.fillText(t.text, t.x, t.y);
+      });
+      ctx.globalAlpha = 1;
+      if (fx.flash > 0) {
+        ctx.fillStyle = `rgba(${fx.flashColor}, ${fx.flash * 2})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    // 점수판 하트 : 하나씩 그려서, 방금 얻은 하트(맨 오른쪽)만 커졌다 작아지며 깜빡여요
+    function drawLives() {
+      ctx.font = '16px "Press Start 2P", monospace';
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      const hw = ctx.measureText("❤️").width + 2;
+      for (let i = 0; i < lives; i++) {
+        const x = W - 16 - (lives - 1 - i) * hw;
+        const isNew = fx.hudPop > 0 && i === lives - 1;
+        if (isNew && Math.floor(fx.hudPop * 10) % 2 === 1) continue; // 깜빡
+        const scale = isNew ? 1 + fx.hudPop * 0.8 : 1;
+        ctx.save();
+        ctx.translate(x - hw / 2, 28);
+        ctx.scale(scale, scale);
+        ctx.fillText("❤️", hw / 2, 0);
+        ctx.restore();
+      }
+    }
+
+    // 공이 벽돌에 맞았는지 보고, 맞았으면 깨고 튕겨요
+    //   보통 공은 한 번에 벽돌 하나를 깨고 튕겨요
+    //   불덩어리는 튕기지 않고 벽돌을 뚫고 지나가요. 맞은 벽돌은 폭발해서 둘레 벽돌까지 같이 터져요
+    function hitBricks() {
+      const hits = bricks.filter((b) => b.alive &&
+        ball.x < b.x + BRICK_W && ball.x + ball.size > b.x &&
+        ball.y < b.y + BRICK_H && ball.y + ball.size > b.y);
+      if (!hits.length) return;
+
+      if (timers.big > 0) {
+        hits.forEach(explode);
+        return; // 튕기지 않아요
+      }
+
+      const b = hits[0];
+      b.alive = false;
+      score += b.points;
+      playBrick(b.row);
+      checkSpecial(b);
+      bounceOff(b);
+    }
+
+    // 폭발 : 맞은 벽돌 + 둘레 BLAST_RANGE 칸의 벽돌이 한꺼번에 터져요
+    function explode(center) {
+      if (!center.alive) return;
+      const blasted = bricks.filter((b) => b.alive &&
+        Math.abs(b.row - center.row) <= BLAST_RANGE && Math.abs(b.col - center.col) <= BLAST_RANGE);
+      let gained = 0;
+      blasted.forEach((b) => {
+        b.alive = false;
+        score += b.points;
+        gained += b.points;
+        burst(b.x + BRICK_W / 2, b.y + BRICK_H / 2, 8, [b.color, ...FIRE_COLORS], 80, 240, -60);
+        checkSpecial(b);
+      });
+      const cx = center.x + BRICK_W / 2, cy = center.y + BRICK_H / 2;
+      burst(cx, cy, 24, FIRE_COLORS, 120, 320, -150); // 불꽃이 위로 솟아요
+      fx.rings.push({ x: cx, y: cy, life: 0.4, max: 0.4 }); // 퍼지는 충격파
+      floatText("+" + gained, cx, cy, "#ffd23f");
+      fx.shake = Math.max(fx.shake, 0.3);
+      fx.flash = Math.max(fx.flash, 0.06);
+      fx.flashColor = "255, 120, 30";
+      playBoom();
+    }
+
+    // 불덩어리 꼬리 : 날아가는 동안 불씨가 뒤로 흩날리며 위로 올라가요
+    function emitFire(dt) {
+      const n = Math.ceil(dt * 120);
+      for (let i = 0; i < n; i++) {
+        const life = 0.25 + Math.random() * 0.3;
+        fx.particles.push({
+          x: ball.x + Math.random() * ball.size,
+          y: ball.y + Math.random() * ball.size,
+          vx: -ball.vx * 0.15 + (Math.random() - 0.5) * 60,
+          vy: -ball.vy * 0.15 + (Math.random() - 0.5) * 60,
+          gravity: -200, life, max: life,
+          color: FIRE_COLORS[Math.floor(Math.random() * FIRE_COLORS.length)],
+          size: Math.random() < 0.5 ? 6 : 4,
+        });
+      }
+    }
+
+    function bounceOff(b) {
+      // 겹친 정도가 작은 쪽으로 부딪힌 것 : 위·아래면 세로로, 옆이면 가로로 튕겨요
+      const fromLeft = ball.x + ball.size - b.x;
+      const fromRight = b.x + BRICK_W - ball.x;
+      const fromTop = ball.y + ball.size - b.y;
+      const fromBottom = b.y + BRICK_H - ball.y;
+      const sideHit = Math.min(fromLeft, fromRight) < Math.min(fromTop, fromBottom);
+      if (sideHit) ball.vx = -ball.vx;
+      else ball.vy = -ball.vy;
+    }
+
+    // 공 (네모난 도트 공)
+    //   빠른 공 = 하늘색 + 뒤에 잔상, 불덩어리 = 빨강·주황·노랑·하양이 겹겹이 일렁여요. 끝나기 2초 전부터 깜빡여요
+    const trail = []; // 빠른 공의 지난 위치들
+    function drawBall() {
+      if (bomb.time > 0) { drawBomb(); return; } // 폭탄이 되었을 때는 폭탄 모양이 먼저
+      const fast = timers.speed > 0 && !timerBlink("speed");
+      const big = timers.big > 0 && !timerBlink("big");
+      const base = ctx.globalAlpha; // 투명한 공일 때는 잔상도 같이 흐려요
+      if (fast && ball.launched) {
+        trail.push({ x: ball.x, y: ball.y, size: ball.size });
+        if (trail.length > 6) trail.shift();
+        trail.forEach((t, i) => {
+          ctx.globalAlpha = base * (i + 1) / (trail.length + 1) * 0.5;
+          ctx.fillStyle = "#3fd8ff";
+          ctx.fillRect(t.x, t.y, t.size, t.size);
+        });
+        ctx.globalAlpha = base;
+      } else {
+        trail.length = 0;
+      }
+      if (big || (timers.big > 0 && ball.size > BALL_SIZE + 2)) {
+        drawFireBall(big);
+        return;
+      }
+      ctx.fillStyle = fast ? "#bff3ff" : "#fff";
+      ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+    }
+
+    // 불덩어리 : 바깥부터 빨강 → 주황 → 노랑 → 하얀 심지. 겹마다 조금씩 흔들려서 불이 일렁여 보여요
+    function drawFireBall(bright) {
+      const s = ball.size;
+      const layers = bright
+        ? [["#ff3d1a", 1], ["#ff7a1a", 0.78], ["#ffd23f", 0.55], ["#fff3b0", 0.3]]
+        : [["#8a2a10", 1], ["#ff5a1a", 0.6]]; // 꺼져갈 때는 어둡게
+      layers.forEach(([color, k], i) => {
+        const size = Math.round(s * k);
+        const jitter = i === 0 ? 0 : Math.round((Math.random() - 0.5) * 4);
+        ctx.fillStyle = color;
+        ctx.fillRect(Math.round(ball.x + (s - size) / 2 + jitter), Math.round(ball.y + (s - size) / 2 - jitter), size, size);
+      });
+      // 바깥 불꽃 : 모서리마다 작은 불길이 날름거려요
+      if (!bright) return;
+      ctx.fillStyle = "#ff7a1a";
+      for (let i = 0; i < 6; i++) {
+        const side = Math.floor(Math.random() * 4);
+        const along = Math.random() * s;
+        const f = 4 + Math.random() * 6;
+        if (side === 0) ctx.fillRect(ball.x + along, ball.y - f, 4, f);
+        else if (side === 1) ctx.fillRect(ball.x + along, ball.y + s, 4, f);
+        else if (side === 2) ctx.fillRect(ball.x - f, ball.y + along, f, 4);
+        else ctx.fillRect(ball.x + s, ball.y + along, f, 4);
+      }
+    }
+
+    // 벽돌 하나 그리기 : 위·왼쪽은 밝게, 아래·오른쪽은 어둡게 해서 도톰해 보이게
+    function drawBrick(b) {
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x, b.y, BRICK_W, BRICK_H);
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.fillRect(b.x, b.y, BRICK_W, 3);
+      ctx.fillRect(b.x, b.y, 3, BRICK_H);
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(b.x, b.y + BRICK_H - 3, BRICK_W, 3);
+      ctx.fillRect(b.x + BRICK_W - 3, b.y, 3, BRICK_H);
+    }
+
+    function draw() {
+      // 배경
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, W, H);
+
+      // 화면 흔들림 : 남은 시간만큼 이리저리 몇 픽셀씩 밀어서 그려요
+      ctx.save();
+      if (fx.shake > 0) {
+        const power = fx.shake * 20;
+        ctx.translate(Math.round((Math.random() - 0.5) * power), Math.round((Math.random() - 0.5) * power));
+      }
+
+      // 맨 위 점수판
+      ctx.font = '16px "Press Start 2P", monospace';
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.fillText("SCORE " + String(score).padStart(4, "0"), 16, 28);
+      drawLives();
+
+      // 점수판 아래 줄
+      ctx.fillStyle = "#ff2e88";
+      ctx.fillRect(0, 48, W, 3);
+
+      // 벽돌
+      bricks.filter((b) => b.alive).forEach(drawBrick);
+      drawSpecialBricks();
+      drawTetris();
+      drawCat(); // 할퀸 자국 (공·패들 뒤에 그려서 공이 가려지지 않아요)
+      drawWalls();
+      drawSaveLine();
+      drawBombZone();
+
+      // 패들 : 줄어든 동안은 보라색, 원래대로 돌아오기 2초 전부터 깜빡여요
+      const shrunk = timers.shrink > 0 && !timerBlink("shrink");
+      ctx.fillStyle = shrunk ? "#d9a6ff" : "#e0e0ff";
+      ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+      ctx.fillStyle = shrunk ? "#8a2be2" : "#7a7aff";
+      ctx.fillRect(paddle.x, paddle.y + paddle.h - 4, paddle.w, 4);
+
+      drawGun();
+      if (!ball.escaping) {
+        ctx.globalAlpha = ballVisibility(); // 투명한 공 : 패들 가까이 올수록 선명해져요
+        if (ctx.globalAlpha > 0) drawBall();
+        ctx.globalAlpha = 1;
+      }
+
+      // 아래 안내 글씨
+      ctx.font = '10px "Press Start 2P", monospace';
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffb000";
+      if (tetris.active) ctx.fillText("←→ MOVE  SPACE TURN  ↑ FAST", W / 2, H - 12);
+      else if (!ball.launched && !gameOver) ctx.fillText("PRESS SPACE", W / 2, H - 12); // 끝 화면에서는 팝업이 안내해요
+      else if (timers.gun > 0) ctx.fillText("SPACE: FIRE!", W / 2, H - 12);
+
+      drawEffects();
+      ctx.restore();
+    }
+
+    // 키보드 : 화살표를 누르고 있는 동안 true
+    const keys = { left: false, right: false, up: false, fire: false };
+    const PADDLE_SPEED = 420; // 1초에 움직이는 거리 (픽셀)
+    const GAME_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", " "];
+
+    document.addEventListener("keydown", (e) => {
+      ensureAudio(); // 소리 준비 (브라우저는 키를 누른 뒤에만 소리를 낼 수 있어요)
+      // M 키 = 소리 켜기/끄기 (한글 자판일 때도 되게 글자 대신 키 자리로 봐요)
+      if (e.code === "KeyM" && !e.repeat) { toggleSound(); return; }
+      if (gameOver) {
+        // 끝 화면에서는 스페이스·엔터가 "다시 하기" 버튼을 눌러요
+        // 버튼 밖을 눌러서 버튼 선택이 풀렸어도 "PRESS SPACE" 안내대로 되게 해요
+        if ((e.key === " " || e.key === "Enter") && document.activeElement !== retryBtn) {
+          e.preventDefault();
+          restart();
+        }
+        return;
+      }
+      if (GAME_KEYS.includes(e.key)) e.preventDefault();
+      if (adTime > 0) return; // 광고 중에는 키가 안 먹어요
+      if (tetris.active) {
+        if (e.key === "ArrowUp") keys.up = true;
+        tetrisKey(e.key); // 이벤트 중에는 조각을 움직여요 (누르고 있으면 계속 움직여요)
+        return;
+      }
+      if (e.key === "ArrowLeft") keys.left = true;
+      if (e.key === "ArrowRight") keys.right = true;
+      if (e.key === " " && !ball.launched) launchBall();
+      else if (e.key === " ") keys.fire = true; // 총을 가졌을 때 쏘기
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft") keys.left = false;
+      if (e.key === "ArrowRight") keys.right = false;
+      if (e.key === "ArrowUp") keys.up = false;
+      if (e.key === " ") keys.fire = false;
+    });
+    // 다른 창으로 넘어가면 손을 뗀 것으로 쳐요 (패들이 혼자 계속 가지 않게)
+    window.addEventListener("blur", () => { keys.left = keys.right = keys.up = keys.fire = false; });
+
+    // dt = 지난 화면에서 지난 시간(초). 컴퓨터가 빠르든 느리든 같은 속도로 움직여요
+    function update(dt) {
+      if (gameOver) return;
+      if (tetris.active) { updateTetris(dt); return; } // 테트리스 중에는 공·패들이 멈춰요
+      updateBombWave(dt); // 폭탄 성공 폭발은 공이 어디 있든 끝까지 퍼져요
+      if (gameOver) return;
+      let dir = 0;
+      if (keys.left) dir -= 1;
+      if (keys.right) dir += 1;
+      paddle.x += dir * PADDLE_SPEED * dt;
+      updateTimers(dt, ball.launched); // 효과 시간은 공이 날아다니는 동안만 흘러요
+
+      // 화면 밖으로 못 나가게
+      paddle.x = Math.max(WALL, Math.min(W - WALL - paddle.w, paddle.x));
+      updateGun(dt);
+
+      // 구멍으로 나간 공이 떨어지는 중이에요
+      if (ball.escaping) { updateEscape(dt); return; }
+
+      if (!ball.launched) {
+        // 발사 전에는 공이 패들 가운데 위에 붙어 다녀요
+        ball.x = paddle.x + paddle.w / 2 - ball.size / 2;
+        ball.y = paddle.y - ball.size - 4;
+        return;
+      }
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      if (timers.big > 0 && Math.random() < ballVisibility()) emitFire(dt); // 투명할 땐 불씨도 안 보여요
+
+      // 왼쪽·오른쪽 벽에 튕기기 (벽 구멍 높이면 튕기지 않고 지나가요)
+      if (ball.x < WALL && !ballInHole(-1)) { ball.x = WALL; ball.vx = Math.abs(ball.vx); playWall(); }
+      if (ball.x > W - WALL - ball.size && !ballInHole(1)) { ball.x = W - WALL - ball.size; ball.vx = -Math.abs(ball.vx); playWall(); }
+      // 구멍을 지나 게임 화면 가장자리에 닿으면, 화면 밖으로 튀어나가 떨어져요
+      if (ball.x < 0 || ball.x + ball.size > W) {
+        startEscape();
+        return;
+      }
+      // 위쪽(점수판 아래 줄)에 튕기기
+      if (ball.y < 51) { ball.y = 51; ball.vy = Math.abs(ball.vy); playWall(); }
+
+      hitBricks();
+      if (tetris.active) return; // 방금 물음표 벽돌을 깼으면 다음 화면부터 테트리스
+      updateBomb(dt); // 폭탄 카운트다운도 공이 날아다니는 동안만 흘러요
+      updateSpecials(dt); // 공이 날아다니는 동안만 특수 벽돌 시간이 흘러요
+      // 벽돌을 다 깼으면 클리어!
+      if (bricks.every((b) => !b.alive)) {
+        showEnd(true);
+        return;
+      }
+
+      // 패들에 튕기기 : 패들 가운데에 맞으면 위로, 끝에 맞을수록 옆으로 비스듬히
+      if (ball.vy > 0 &&
+          ball.y + ball.size >= paddle.y && ball.y + ball.size <= paddle.y + paddle.h &&
+          ball.x + ball.size >= paddle.x && ball.x <= paddle.x + paddle.w) {
+        const hit = (ball.x + ball.size / 2 - (paddle.x + paddle.w / 2)) / (paddle.w / 2); // -1 ~ 1
+        const angle = hit * (Math.PI / 3); // 최대 60도
+        ball.vx = ballSpeed() * Math.sin(angle);
+        ball.vy = -ballSpeed() * Math.cos(angle);
+        ball.y = paddle.y - ball.size;
+        playPaddle();
+      }
+
+      // 바닥으로 떨어지면 목숨 1개 줄이고, 공은 다시 패들 위로
+      if (ball.y > H) {
+        if (jesusSave) { rescueBall(); playGood(); } // 예수님이 한 번 꺼내 줘요
+        else { playMiss(); loseLife(); }
+      }
+    }
+
+    function loseLife() {
+      if (!testGod) lives -= 1; // 테스트 모드의 무적이면 목숨이 안 줄어요
+      ball.launched = false;
+      cancelBomb(); // 폭탄을 들고 떨어지면 폭탄은 그냥 사라져요
+      if (lives <= 0) showEnd(false);
+    }
+
+    // 광고 팝업 : 떠 있는 동안(adTime 초) 게임 전체가 멈춰요. 공·패들·고양이·테트리스·이펙트 모두
+    const AD_TIME = 4;
+    const adPopup = document.getElementById("ad-popup");
+    const adCount = document.getElementById("ad-count");
+    let adTime = 0;
+
+    function showAd() {
+      adTime = AD_TIME;
+      keys.left = keys.right = keys.up = keys.fire = false;
+      adCount.textContent = AD_TIME;
+      adPopup.hidden = false;
+    }
+
+    function updateAd(dt) {
+      adTime -= dt;
+      adCount.textContent = Math.max(1, Math.ceil(adTime));
+      if (adTime <= 0) {
+        adTime = 0;
+        adPopup.hidden = true;
+      }
+    }
+
+    const gameoverBox = document.getElementById("gameover");
+    const endTitle = document.getElementById("end-title");
+    const retryBtn = document.getElementById("retry");
+
+    // 끝 화면 : cleared = true 면 클리어, false 면 게임 오버 (같은 창을 글씨·색만 바꿔서 써요)
+    //   음악이 멈추고 → 게임 오버·클리어 멜로디 → 점수가 0부터 "띡띡띡" 올라가다 "딩!"
+    const finalScore = document.getElementById("final-score");
+    const SCORE_COUNT_TIME = 1.2; // 점수가 올라가는 시간 (초)
+    let scoreTimer = null;
+
+    function showEnd(cleared) {
+      gameOver = true;
+      keys.left = keys.right = false;
+      // 글씨는 영어로 : 레트로 글꼴(Press Start 2P)에 한글이 없어서, 영어여야 도트 글씨로 나와요
+      endTitle.textContent = cleared ? "STAGE CLEAR!" : "GAME OVER";
+      gameoverBox.classList.toggle("cleared", cleared);
+      stopTetrisMusic();
+      // 게임 오버는 공을 놓친 "뚜루루" 와 겹치지 않게 0.5초 쉬었다가 멜로디. jingle = 멜로디가 끝나는 시각(초)
+      const jingle = cleared ? playClear() : playGameOver(0.5);
+      finalScore.textContent = scoreText(0);
+      finalScore.classList.remove("counting");
+      gameoverBox.hidden = false;
+      retryBtn.focus(); // 키보드로 바로 누를 수 있게
+      countScore(score, jingle);
+    }
+
+    // 점수판처럼 4자리 (0340)
+    const scoreText = (n) => String(n).padStart(4, "0");
+
+    // 점수를 0부터 target 까지 올려요. wait 초 뒤에 시작. 올라가는 동안 숫자가 깜빡여요
+    function countScore(target, wait) {
+      clearTimeout(scoreTimer);
+      const steps = target > 0 ? 24 : 0;
+      let i = 0;
+      const tick = () => {
+        if (!gameOver) return;
+        i += 1;
+        finalScore.textContent = scoreText(Math.round(target * Math.min(1, i / steps)));
+        finalScore.classList.toggle("counting", i < steps);
+        if (i >= steps) { playDing(); return; }
+        playTick();
+        scoreTimer = setTimeout(tick, (SCORE_COUNT_TIME / steps) * 1000);
+      };
+      scoreTimer = setTimeout(steps ? tick : playDing, wait * 1000);
+    }
+
+    // 다시 하기 : 점수·목숨·벽돌·패들 위치를 처음으로
+    function restart() {
+      makeBricks();
+      resetSpecials();
+      tetris.active = false;
+      tetris.piece = null;
+      stopTetrisMusic();
+      clearTimeout(scoreTimer);
+      cat.active = false;
+      clearCatLayers();
+      for (const name of Object.keys(timers)) timers[name] = 0;
+      paddle.w = PADDLE_W;
+      ball.size = BALL_SIZE;
+      fx.shake = 0;
+      fx.particles = [];
+      fx.texts = [];
+      fx.rings = [];
+      fx.beams = [];
+      figure.type = null;
+      jesusSave = false;
+      cancelBomb();
+      bomb.wave = [];
+      bullets = [];
+      score = 0;
+      lives = 3;
+      paddle.x = W / 2 - paddle.w / 2;
+      ball.launched = false;
+      ball.escaping = false;
+      adTime = 0;
+      adPopup.hidden = true;
+      gameOver = false;
+      gameoverBox.hidden = true;
+      retryBtn.blur();
+    }
+    retryBtn.addEventListener("click", restart);
+
+    // 살짝 비스듬히 위로 발사 (왼쪽·오른쪽은 무작위)
+    function launchBall() {
+      const angle = (Math.random() < 0.5 ? -1 : 1) * (Math.PI / 8);
+      ball.vx = ballSpeed() * Math.sin(angle);
+      ball.vy = -ballSpeed() * Math.cos(angle);
+      ball.launched = true;
+    }
+
+    // ---------------------------------------------------------
+    // 테스트 모드 : 오른쪽 위 TEST 버튼을 누르거나, 주소 끝에 ?test 를 붙여서 열면 (brick.html?test) 왼쪽 위에 버튼 판이 생겨요
+    //   버튼을 누르면 그 상·벌·이벤트가 바로 일어나요 (한 번 받은 것도 몇 번이든 다시 돼요)
+    //   벽돌 채우기 = 벽돌 32개를 처음처럼, 무적 = 공을 놓쳐도 목숨이 안 줄어요
+    const TEST_BUTTONS = {
+      good: [["heart", "❤️ 하트"], ["big", "🔥 불덩어리"], ["gun", "🔫 총"], ["buddha", "🌸 부처님"], ["jesus", "✝️ 예수님"], ["bomb", "💣 폭탄"]],
+      bad: [["shrink", "💀 해골"], ["speed", "⚡ 번개"], ["hole", "🧱 벽 구멍"], ["ghost", "👁 투명"], ["ad", "📺 광고"], ["addrow", "⬇️ 한 줄"]],
+      event: [["tetris", "❓ 테트리스"], ["cat", "🐱 고양이"]],
+    };
+    let testGod = false;
+
+    const testPanel = document.getElementById("test-panel");
+    const testBtn = document.getElementById("test-btn");
+    const godBtn = document.getElementById("test-god");
+
+    // 테스트 모드 켜기/끄기 : 판을 보이거나 숨기고, 주소의 ?test 도 맞춰요 (새로 고침해도 그대로)
+    //   끌 때는 무적도 같이 꺼요 (판이 안 보이는데 무적만 남지 않게)
+    function setTestMode(on) {
+      testPanel.hidden = !on;
+      testBtn.setAttribute("aria-pressed", String(on));
+      if (!on && testGod) {
+        testGod = false;
+        godBtn.setAttribute("aria-pressed", "false");
+      }
+      const url = new URL(location.href);
+      if (on) url.searchParams.set("test", "");
+      else url.searchParams.delete("test");
+      try { history.replaceState(null, "", url.href.replace("test=", "test")); } catch (e) {} // ?test= 대신 ?test
+    }
+    testBtn.addEventListener("click", (e) => {
+      setTestMode(testPanel.hidden);
+      e.currentTarget.blur(); // 스페이스가 버튼을 또 누르지 않게
+    });
+
+    function setupTestMode() {
+      const panel = testPanel;
+      Object.entries(TEST_BUTTONS).forEach(([group, list]) => {
+        const box = panel.querySelector(`[data-group="${group}"]`);
+        list.forEach(([type, label]) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = label;
+          btn.addEventListener("click", () => testTrigger(type));
+          box.appendChild(btn);
+        });
+      });
+      document.getElementById("test-refill").addEventListener("click", (e) => {
+        makeBricks();
+        activeSpecials = [];
+        e.currentTarget.blur();
+      });
+      document.getElementById("test-god").addEventListener("click", (e) => {
+        testGod = !testGod;
+        e.currentTarget.setAttribute("aria-pressed", String(testGod));
+        e.currentTarget.blur();
+      });
+    }
+
+    // 버튼으로 바로 실행 : 게임 중이 아니면 먼저 공을 발사하고, 이펙트는 바로 칠 수 있는 벽돌 자리에서 터져요
+    function testTrigger(type) {
+      document.activeElement.blur(); // 버튼에 남은 선택 때문에 스페이스가 버튼을 또 누르지 않게
+      if (gameOver || tetris.active || adTime > 0) return;
+      if (!ball.launched) launchBall();
+      const b = exposedBricks()[0];
+      const cx = b ? b.x + BRICK_W / 2 : W / 2;
+      const cy = b ? b.y + BRICK_H / 2 : 150;
+      floatText(SPECIAL_TYPES[type].label, cx, cy - 20, SPECIAL_TYPES[type].sparkle[0]);
+      applySpecial(type, cx, cy);
+    }
+    setupTestMode();
+    if (new URLSearchParams(location.search).has("test")) setTestMode(true); // 주소에 ?test 가 있으면 켜진 채로 시작
+
+    let last = 0;
+    function loop(now) {
+      const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
+      last = now;
+      if (adTime > 0) {
+        updateAd(dt); // 광고가 떠 있으면 게임은 그대로 멈춰 있어요
+      } else {
+        update(dt);
+        if (!gameOver) updateCat(dt); // 고양이는 공이 날아다니든 기다리든 상관없이 움직여요
+        updateEffects(dt); // 게임이 끝나도 이펙트는 끝까지 흘러가요
+      }
+      draw();
+      drawOverlay(); // 오락기 바깥 : 거대 고양이, 테두리 구멍, 구멍으로 떨어지는 공
+      requestAnimationFrame(loop);
+    }
+
+    // 글꼴을 다 불러온 뒤에 시작해야 점수판 글씨가 레트로 글꼴로 나와요
+    document.fonts.load('16px "Press Start 2P"').finally(() => requestAnimationFrame(loop));
+  </script>
+</body>
+</html>
